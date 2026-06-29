@@ -35,9 +35,15 @@ class HandleInertiaRequests extends Middleware
      */
     public function share(Request $request): array
     {
-        return [
-            ...parent::share($request),
-            //
-        ];
+        return array_merge(parent::share($request), [
+            'auth' => [
+                // Usamos Auth::user() que ya está sincronizado con la DB del cliente
+                'user' => \Illuminate\Support\Facades\Auth::user() ? [
+                    'id'    => \Illuminate\Support\Facades\Auth::user()->id,
+                    'name'  => \Illuminate\Support\Facades\Auth::user()->name,
+                    'email' => \Illuminate\Support\Facades\Auth::user()->email,
+                ] : null,
+            ],
+        ]);
     }
 }

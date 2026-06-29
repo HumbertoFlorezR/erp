@@ -1,23 +1,40 @@
 <?php
 
+use App\Http\Controllers\Admin\EmpresaController;
+use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use App\Http\Controllers\Admin\EmpresaController;
 
 /*
 |--------------------------------------------------------------------------
 | 1. RUTAS DEL INQUILINO / CLIENTE (Subdominios dinámicos)
 |--------------------------------------------------------------------------
 */
-Route::group(['domain' => '{tenant}.erp-global.test'], function () {
 
-    Route::get('/', function ($tenant) {
-        // Pasamos la variable explícitamente como una prop estándar
-        return Inertia::render('Welcome', [
-            'tenantName' => strtoupper($tenant)
-        ]);
+Route::group([
+    'domain' => '{tenant}.erp-global.test',
+    'middleware' => [\App\Http\Middleware\TenantMiddleware::class]
+], function () {
+
+    // Ruta de bienvenida del subdominio
+    Route::get('/', function () {
+        return Inertia::render('Welcome');
     });
 
+    // Rutas de autenticación sin el middleware 'guest' para evitar conflictos en Laravel
+    Route::get('/login', [TenantAuthController::class, 'showLogin'])->name('login');
+    Route::post('/login', [TenantAuthController::class, 'login']);
+
+    // Rutas protegidas por autenticación
+    // Dentro de Route::group(['domain' => '{tenant}.erp-global.test' ...])
+    Route::middleware(['auth'])->group(function () {
+
+        // Cambiamos el index para que cargue normal sin el middleware 'web' redundante aquí adentro
+        Route::get('/dashboard', [DashboardController::class, 'index'])->name('tenant.dashboard');
+
+        Route::post('/logout', [TenantAuthController::class, 'logout'])->name('tenant.logout');
+    });
 });
 
 /*
@@ -33,6 +50,6 @@ Route::group(['domain' => 'erp-global.test'], function () {
         ]);
     });
 
-    // Tu CRUD de control de empresas centrales
+    // CRUD de control de empresas centrales
     Route::resource('empresas', EmpresaController::class);
 });
