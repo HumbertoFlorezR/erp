@@ -5,6 +5,7 @@ use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
+use App\Http\Controllers\Tenant\ContactController;
 
 /*
 |--------------------------------------------------------------------------
@@ -34,6 +35,12 @@ Route::group([
         Route::get('/dashboard', [DashboardController::class, 'index'])->name('tenant.dashboard');
 
         Route::post('/logout', [TenantAuthController::class, 'logout'])->name('tenant.logout');
+
+        // 🚀 AÑADE ESTAS LÍNEAS AQUÍ ADENTRO:
+        Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
+        Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
+        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
+        Route::patch('/contacts/{contact}/toggle', [ContactController::class, 'toggleStatus'])->name('contacts.toggle');
     });
 });
 
