@@ -39,8 +39,8 @@ Route::group([
         // 🚀 AÑADE ESTAS LÍNEAS AQUÍ ADENTRO:
         Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
         Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
-        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
         Route::patch('/contacts/{contact}/toggle', [ContactController::class, 'toggleStatus'])->name('contacts.toggle');
+        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update'); // 🚀 NUEVA
     });
 });
 
