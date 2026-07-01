@@ -1,11 +1,12 @@
 <?php
 
 use App\Http\Controllers\Admin\EmpresaController;
+use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
-use App\Http\Controllers\Tenant\ContactController;
 
 /*
 |--------------------------------------------------------------------------
@@ -40,7 +41,13 @@ Route::group([
         Route::get('/contacts', [ContactController::class, 'index'])->name('contacts.index');
         Route::post('/contacts', [ContactController::class, 'store'])->name('contacts.store');
         Route::patch('/contacts/{contact}/toggle', [ContactController::class, 'toggleStatus'])->name('contacts.toggle');
-        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update'); // 🚀 NUEVA
+        Route::put('/contacts/{contact}', [ContactController::class, 'update'])->name('contacts.update');
+
+        // 📦 MÓDULO DE PRODUCTOS Y SERVICIOS
+        Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+        Route::post('/products', [ProductController::class, 'store'])->name('products.store');
+        Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
+        Route::patch('/products/{product}/toggle', [ProductController::class, 'toggleStatus'])->name('products.toggle');
     });
 });
 
