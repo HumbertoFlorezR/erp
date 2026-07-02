@@ -1,12 +1,32 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import { usePage, useForm, router, Head, Link } from '@inertiajs/vue3';
+import ExportModal from '@/Components/ExportModal.vue';
+
+const showExportModal = ref(false);
 
 // 1. Propiedades del controlador
 const props = defineProps({
     contacts: Object,
     filters: Object
 });
+
+const contactColumns = [
+    { key: 'document_type', label: 'Tipo Documento' },
+    { key: 'document_number', label: 'Cédula / NIT' },
+    { key: 'dv', label: 'DV' },
+    { key: 'first_name', label: 'Nombres' },
+    { key: 'last_name', label: 'Apellidos' },
+    { key: 'company_name', label: 'Nombre Comercial / Razón Social' },
+    { key: 'email', label: 'Correo Electrónico' },
+    { key: 'phone', label: 'Teléfono / Celular' },
+    { key: 'address', label: 'Dirección' },
+    { key: 'regime_type', label: 'Régimen' },
+    { key: 'is_client', label: 'Cliente' },
+    { key: 'is_supplier', label: 'Proveedor' },
+    { key: 'is_employee', label: 'Empleado' },
+    { key: 'is_active', label: 'Estado (Activo)' }
+];
 
 const page = usePage();
 const tenant = computed(() => page.props.tenant || {});
@@ -155,9 +175,15 @@ const isNit = computed(() => form.document_type === 'NIT');
                         <input type="text" v-model="search" placeholder="Buscar por documento o nombre..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:border-transparent transition-all" :style="{ '--tw-ring-color': tenant.primary_color }" />
                     </div>
                     <!-- 💡 CAMBIO: Abrir modal al dar clic -->
-                    <button @click="openCreateModal" class="text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap animate-fade-in" :style="{ backgroundColor: tenant.primary_color }">
-                        + Nuevo Tercero
-                    </button>
+                    <div class="flex items-center gap-2">
+                        <button @click="showExportModal = true" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                            <span>📥 Exportar</span>
+                        </button>
+
+                        <button  @click="openCreateModal" class="text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap animate-fade-in" :style="{ backgroundColor: tenant.primary_color }">
+                            + Nuevo Contacto
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -330,4 +356,11 @@ const isNit = computed(() => form.document_type === 'NIT');
         </div>
 
     </div>
+    <ExportModal
+        :is-open="showExportModal"
+        module-name="contacts"
+        :available-columns="contactColumns"
+        :current-data="contacts.data"
+        @close="showExportModal = false"
+    />
 </template>

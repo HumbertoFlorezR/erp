@@ -3,6 +3,7 @@
 use App\Http\Controllers\Admin\EmpresaController;
 use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\ExportController;
 use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
@@ -48,6 +49,10 @@ Route::group([
         Route::post('/products', [ProductController::class, 'store'])->name('products.store');
         Route::put('/products/{product}', [ProductController::class, 'update'])->name('products.update');
         Route::patch('/products/{product}/toggle', [ProductController::class, 'toggleStatus'])->name('products.toggle');
+
+        // 📊 MOTOR DE EXPORTACIÓN GENÉRICO
+        Route::post('/export/preferences', [ExportController::class, 'savePreferences'])->name('export.preferences');
+        Route::post('/export/download', [ExportController::class, 'export'])->name('export.download');
     });
 });
 
