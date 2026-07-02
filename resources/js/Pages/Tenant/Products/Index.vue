@@ -1,11 +1,34 @@
 <script setup>
-import { ref, watch } from 'vue';
+import { ref, watch, computed } from 'vue';
+import ExportModal from '@/Components/ExportModal.vue';
 import { useForm, router } from '@inertiajs/vue3';
+
+// Define las columnas del módulo de Productos (ajusta las 'key' según tus campos reales)
+const productColumns = [
+    { key: 'type', label: 'Tipo Producto' },
+    { key: 'code', label: 'Código / SKU' },
+    { key: 'name', label: 'Nombre del Producto' },
+    { key: 'description', label: 'Descripción' },
+    { key: 'average_cost', label: 'Costo Promedio' },
+    { key: 'last_purchase_price', label: 'Precio Última Compra' },
+    { key: 'price_excluding_tax', label: 'Precio Sin Impuestos' },
+    { key: 'tax_rate', label: 'Tasa de IVA' },
+    { key: 'tax_type', label: 'Tipo de Impuesto' },
+    { key: 'stock', label: 'Inventario / Stock' },
+    { key: 'minimum_stock', label: 'Stock Mínimo' },
+    { key: 'manage_stock', label: 'Controlar Inventario' },
+    { key: 'is_perishable', label: 'Perecedero' },
+    { key: 'is_active', label: 'Estado' }
+];
+
+// Estado para controlar la apertura del modal
+const showExportModal = ref(false);
 
 // 1. PROPIEDADES RECIBIDAS DESDE EL CONTROLADOR
 const props = defineProps({
     products: Object,
-    filters: Object
+    filters: Object,
+    tenant: Object
 });
 
 // 2. BUSCADOR Y FILTROS REACTIVOS
@@ -133,9 +156,16 @@ const submit = () => {
                 <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Catálogo de Productos y Servicios</h1>
                 <p class="text-sm text-slate-500">Gestión integrada de inventario, costos, tarifas de IVA y estándares DIAN.</p>
             </div>
-            <button @click="openCreateModal" class="bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                <span>+ Nuevo Item</span>
-            </button>
+
+            <div class="flex items-center gap-2">
+                <button @click="showExportModal = true" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                    <span>📥 Exportar</span>
+                </button>
+
+                <button  @click="openCreateModal" class="text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap animate-fade-in" :style="{ backgroundColor: tenant.primary_color }">
+                    + Nuevo Item
+                </button>
+            </div>
         </div>
 
         <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between gap-4 mb-6">
@@ -300,4 +330,11 @@ const submit = () => {
             </div>
         </div>
     </div>
+    <ExportModal
+        :is-open="showExportModal"
+        module-name="products"
+        :available-columns="productColumns"
+        :current-data="products.data"
+        @close="showExportModal = false"
+    />
 </template>
