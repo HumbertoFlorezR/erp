@@ -1,7 +1,7 @@
 <script setup>
 import { ref, watch, computed } from 'vue';
 import ExportModal from '@/Components/ExportModal.vue';
-import { useForm, router } from '@inertiajs/vue3';
+import { useForm, router, Link } from '@inertiajs/vue3';
 
 // Define las columnas del módulo de Productos (ajusta las 'key' según tus campos reales)
 const productColumns = [
@@ -150,79 +150,98 @@ const submit = () => {
 </script>
 
 <template>
-    <div class="p-6 bg-slate-50 min-h-screen">
-        <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
-            <div>
-                <h1 class="text-2xl font-bold text-slate-800 tracking-tight">Catálogo de Productos y Servicios</h1>
-                <p class="text-sm text-slate-500">Gestión integrada de inventario, costos, tarifas de IVA y estándares DIAN.</p>
+    <Head title="Productos y Servicios" />
+
+    <div class="min-h-screen bg-slate-100 font-sans flex flex-col">
+        <!-- CABECERA SUPERIOR -->
+        <nav class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
+            <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
+                     :style="{ backgroundColor: tenant.primary_color }">
+                    {{ tenant.company_name?.substring(0,2).toUpperCase() }}
+                </div>
+
+                <div>
+                    <span class="font-bold text-slate-800 text-lg">{{ tenant.company_name }} - Catálogo de Productos y Servicios</span>
+                    <p class="text-sm text-slate-500">Gestión integrada de inventario, costos, tarifas de IVA y estándares DIAN.</p>
+                </div>
             </div>
 
-            <div class="flex items-center gap-2">
-                <button @click="showExportModal = true" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
-                    <span>📥 Exportar</span>
-                </button>
-
-                <button  @click="openCreateModal" class="text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap animate-fade-in" :style="{ backgroundColor: tenant.primary_color }">
-                    + Nuevo Item
-                </button>
+            <div class="flex items-center gap-4">
+                <Link href="/dashboard" class="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors border-2 p-1">
+                    Volver al Inicio
+                </Link>
             </div>
-        </div>
+        </nav>
 
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between gap-4 mb-6">
-            <div class="flex flex-wrap items-center gap-2">
-                <button @click="filterByType('TODOS')" :class="currentType === 'TODOS' && !lowStockFilter ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Todos</button>
-                <button @click="filterByType('PRODUCTO')" :class="currentType === 'PRODUCTO' && !lowStockFilter ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Productos</button>
-                <button @click="filterByType('SERVICIO')" :class="currentType === 'SERVICIO' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Servicios</button>
+        <!-- CUERPO DEL MÓDULO -->
+        <div class="p-6 max-w-7xl w-full mx-auto space-y-6 flex-1">
+            <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+                <div class="flex flex-wrap items-center gap-2">
+                    <button @click="filterByType('TODOS')" :class="currentType === 'TODOS' && !lowStockFilter ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Todos</button>
+                    <button @click="filterByType('PRODUCTO')" :class="currentType === 'PRODUCTO' && !lowStockFilter ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Productos</button>
+                    <button @click="filterByType('SERVICIO')" :class="currentType === 'SERVICIO' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all">Servicios</button>
 
-                <button @click="toggleLowStock" :class="lowStockFilter ? 'bg-red-600 text-white shadow-sm shadow-red-100' : 'bg-red-50 text-red-600 hover:bg-red-100'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
-                    <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
-                    Stock Bajo / Críticos
-                </button>
+                    <button @click="toggleLowStock" :class="lowStockFilter ? 'bg-red-600 text-white shadow-sm shadow-red-100' : 'bg-red-50 text-red-600 hover:bg-red-100'" class="px-4 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5">
+                        <span class="w-2 h-2 rounded-full bg-current animate-pulse"></span>
+                        Stock Bajo / Críticos
+                    </button>
+                </div>
+
+                <div class="flex items-center gap-3 w-full md:w-auto">
+                    <div class="w-full md:w-80">
+                        <input v-model="search" type="text" placeholder="Buscar por código o nombre..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-slate-400 text-slate-700 placeholder-slate-400 transition-all" />
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button @click="showExportModal = true" class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-semibold text-sm px-4 py-2.5 rounded-xl shadow-sm transition-all flex items-center gap-2">
+                            <span>📥 Exportar</span>
+                        </button>
+
+                        <button  @click="openCreateModal" class="text-white font-semibold text-sm px-4 py-2 rounded-xl shadow-md transition-all active:scale-95 whitespace-nowrap animate-fade-in" :style="{ backgroundColor: tenant.primary_color }">
+                            + Nuevo Item
+                        </button>
+                    </div>
+                </div>
             </div>
 
-            <div class="w-full md:w-80">
-                <input v-model="search" type="text" placeholder="Buscar por código o nombre..." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm focus:outline-none focus:border-slate-400 text-slate-700 placeholder-slate-400 transition-all" />
-            </div>
-        </div>
-
-        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-            <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
-                    <thead>
-                        <tr class="bg-slate-50 border-b border-slate-100 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
-                            <th class="py-4 px-6">Código / Tipo</th>
-                            <th class="py-4 px-6">Descripción del Ítem</th>
-                            <th class="py-4 px-6 text-right">Costo Prom.</th>
-                            <th class="py-4 px-6 text-right">Precio Base</th>
-                            <th class="py-4 px-6 text-center">IVA</th>
-                            <th class="py-4 px-6 text-right">Margen</th>
-                            <th class="py-4 px-6 text-center">Stock</th>
-                            <th class="py-4 px-6 text-center">Estado</th>
-                        </tr>
-                    </thead>
-                    <tbody class="divide-y divide-slate-50 text-sm text-slate-600">
-                        <tr v-for="item in products.data" :key="item.id"
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+                <div class="overflow-x-auto">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 border-b border-slate-100 text-[11px] font-bold tracking-wider text-slate-400 uppercase">
+                                <th class="py-4 px-6">Código / Tipo</th>
+                                <th class="py-4 px-6">Descripción del Ítem</th>
+                                <th class="py-4 px-6 text-right">Costo Prom.</th>
+                                <th class="py-4 px-6 text-right">Precio Base</th>
+                                <th class="py-4 px-6 text-center">IVA</th>
+                                <th class="py-4 px-6 text-right">Margen</th>
+                                <th class="py-4 px-6 text-center">Stock</th>
+                                <th class="py-4 px-6 text-center">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-50 text-sm text-slate-600">
+                            <tr v-for="item in products.data" :key="item.id"
                             @click="openEditModal(item)"
-                            :class="item.is_low_stock ? 'bg-red-50/40 hover:bg-red-50/70' : 'hover:bg-slate-50/50'"
+                            :class="item.is_low_stock ? 'bg-red-50/40 hover:bg-red-100/80' : 'hover:bg-slate-200/80'"
                             class="transition-colors cursor-pointer"
-                        >
-                            <td class="py-4 px-6">
+                            >
+                            <td class="py-2 px-6">
                                 <span class="font-mono text-xs font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md block w-max mb-1">{{ item.code || 'S/C' }}</span>
                                 <span :class="item.type === 'PRODUCTO' ? 'text-blue-600 bg-blue-50' : 'text-purple-600 bg-purple-50'" class="text-[10px] font-bold px-1.5 py-0.5 rounded uppercase">{{ item.type }}</span>
                             </td>
-                            <td class="py-4 px-6">
+                            <td class="py-2 px-6">
                                 <div class="font-semibold text-slate-800">{{ item.name }}</div>
                                 <div class="text-xs text-slate-400 max-w-xs truncate">{{ item.description || 'Sin descripción' }}</div>
                             </td>
-                            <td class="py-4 px-6 text-right font-mono text-slate-500">${{ item.average_cost }}</td>
-                            <td class="py-4 px-6 text-right font-mono font-semibold text-slate-800">${{ item.price_excluding_tax }}</td>
-                            <td class="py-4 px-6 text-center">
+                            <td class="py-2 px-6 text-right font-mono text-slate-500">${{ item.average_cost }}</td>
+                            <td class="py-2 px-6 text-right font-mono font-semibold text-slate-800">${{ item.price_excluding_tax }}</td>
+                            <td class="py-2 px-6 text-center">
                                 <span :class="item.tax_type === 'GRAVADO' ? 'text-amber-700 bg-amber-50 border border-amber-100' : 'text-slate-500 bg-slate-100'" class="text-xs px-2 py-0.5 rounded-md font-medium">
                                     {{ item.tax_rate }}%
                                 </span>
                             </td>
-                            <td class="py-4 px-6 text-right font-semibold text-emerald-600">{{ item.profit_margin }}%</td>
-                            <td class="py-4 px-6 text-center">
+                            <td class="py-2 px-6 text-right font-semibold text-emerald-600">{{ item.profit_margin }}%</td>
+                            <td class="py-2 px-6 text-center">
                                 <div v-if="item.type === 'PRODUCTO' && item.manage_stock">
                                     <span :class="item.is_low_stock ? 'text-red-700 bg-red-100 font-bold' : 'text-slate-700 bg-slate-100 font-medium'" class="px-2.5 py-0.5 rounded-full text-xs">
                                         {{ item.stock }}
@@ -231,7 +250,7 @@ const submit = () => {
                                 </div>
                                 <span v-else class="text-xs text-slate-400">—</span>
                             </td>
-                            <td class="py-4 px-6 text-center">
+                            <td class="py-2 px-6 text-center">
                                 <button @click="toggleStatus(item.id)" class="relative inline-flex items-center cursor-pointer focus:outline-none">
                                     <div :class="item.is_active ? 'bg-emerald-500' : 'bg-slate-200'" class="w-9 h-5 rounded-full transition-colors duration-200">
                                         <div :class="item.is_active ? 'translate-x-4' : 'translate-x-0.5'" class="w-4 h-4 bg-white rounded-full mt-0.5 transition-transform duration-200 shadow-sm"></div>
@@ -242,8 +261,9 @@ const submit = () => {
                         <tr v-if="products.data.length === 0">
                             <td colspan="8" class="text-center py-12 text-slate-400 text-sm">No se encontraron productos ni servicios registrados.</td>
                         </tr>
-                    </tbody>
-                </table>
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
 

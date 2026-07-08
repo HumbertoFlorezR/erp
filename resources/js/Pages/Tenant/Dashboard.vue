@@ -1,80 +1,260 @@
 <script setup>
-import { usePage, Link } from '@inertiajs/vue3';
-import { computed, ref } from 'vue'; // 💡 ¡AQUÍ ESTÁ EL TRUCO! Añadimos ', ref'
+import { ref, computed } from 'vue';
+import { Head, Link, usePage } from '@inertiajs/vue3';
 
+// Captura de datos del sistema (Tenant para diseño y Auth para roles)
 const page = usePage();
+const tenant = computed(() => page.props.tenant || { company_name: 'ERP GLOBAL', primary_color: '#0f172a' });
+const user = computed(() => page.props.auth?.user || { name: 'Usuario', role: 'admin' });
 
-// Volvemos a la lectura limpia y estándar de Laravel + Inertia
-const user = computed(() => page.props.auth?.user || null);
-const tenant = computed(() => page.props.tenant);
-const authData = computed(() => page.props.auth || {});
+// Control del estado del menú lateral
+const isSidebarOpen = ref(true);
 
-// 💡 Control de estado para la modal de confirmación
-const showLogoutModal = ref(false);
+// Datos de prueba simulados (Estos vendrán desde el DashboardController)
+const stats = ref({
+    total_sales: 12450000,
+    cash_balance: 3200000,
+    accounts_receivable: 4500000,
+    low_stock_count: 3
+});
+
+// ⏳ Cartera por Cobrar (Clientes)
+const accountsReceivableList = ref([
+    { id: 1, number: 'V-1001', client: 'Distribuidora Alianza', total: 450000, due_date: '12/07/2026' },
+    { id: 2, number: 'V-1002', client: 'Juan Pérez', total: 120000, due_date: '15/07/2026' }
+]);
+
+// 💸 Cartera por Pagar (Proveedores) - ¡NUEVO!
+const accountsPayableList = ref([
+    { id: 1, number: 'F-9982', provider: 'Colanta S.A.S.', total: 1850000, due_date: '10/07/2026' },
+    { id: 2, number: 'F-4431', provider: 'Fruver Central', total: 340000, due_date: '14/07/2026' }
+]);
+
+// 📦 Productos en Stock Crítico - ¡NUEVO!
+const lowStockProducts = ref([
+    { id: 1, name: 'Aceite de Girasol 1L', sku: 'REF-0021', current_stock: 2, min_stock: 10 },
+    { id: 2, name: 'Arroz Integral 1Kg', sku: 'REF-0089', current_stock: 4, min_stock: 15 },
+    { id: 3, name: 'Leche Entera Pac x6', sku: 'REF-0102', current_stock: 1, min_stock: 5 }
+]);
 </script>
 
 <template>
-    <div class="min-h-screen bg-slate-100 font-sans flex flex-col">
-        <nav class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
-            <div class="flex items-center gap-3">
-                <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
-                     :style="{ backgroundColor: tenant?.primary_color }">
-                    {{ tenant?.company_name.substring(0,2).toUpperCase() }}
+    <Head title="Panel de Control" />
+
+    <div class="min-h-screen bg-slate-100 font-sans flex">
+
+        <aside
+            class="bg-slate-900 text-slate-300 w-64 min-h-screen transition-all duration-300 flex flex-col justify-between shrink-0"
+            :class="isSidebarOpen ? 'translate-x-0 block' : '-translate-x-full hidden md:block md:w-20'"
+        >
+            <div>
+                <div class="px-6 py-5 bg-slate-950 border-b border-slate-800 flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm shrink-0"
+                         :style="{ backgroundColor: tenant.primary_color }">
+                        {{ tenant.company_name?.substring(0,2).toUpperCase() }}
+                    </div>
+                    <span v-if="isSidebarOpen" class="font-bold text-white text-md tracking-wide truncate">{{ tenant.company_name }}</span>
                 </div>
-                <span class="font-bold text-slate-800 text-lg">{{ tenant?.company_name }} - Panel de Control</span>
+
+                <nav class="p-4 space-y-1">
+                    <Link href="/dashboard" class="flex items-center gap-3 px-4 py-2.5 rounded-xl bg-slate-800 text-white font-medium text-sm transition-all">
+                        <span>📊</span> <span v-if="isSidebarOpen">Dashboard</span>
+                    </Link>
+
+                    <Link v-if="user.role === 'admin' || user.role === 'seller'" href="/contacts" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>👥</span> <span v-if="isSidebarOpen">Terceros / Contactos</span>
+                    </Link>
+
+                    <Link href="/products" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>📦</span> <span v-if="isSidebarOpen">Inventario / Kardex</span>
+                    </Link>
+
+                    <Link v-if="user.role === 'admin'" href="/purchase-invoices" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>📥</span> <span v-if="isSidebarOpen">Compras</span>
+                    </Link>
+
+                    <Link v-if="user.role === 'admin'" href="/" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>📥</span> <span v-if="isSidebarOpen">Gastos</span>
+                    </Link>
+
+                    <Link href="/sales" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>📤</span> <span v-if="isSidebarOpen">Ventas / POS</span>
+                    </Link>
+
+                    <Link v-if="user.role === 'admin'" href="/cash-flow" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>💰</span> <span v-if="isSidebarOpen">Caja y Cartera</span>
+                    </Link>
+                </nav>
             </div>
 
-            <div class="flex items-center gap-4">
-                <span class="text-sm text-slate-600 font-medium">Hola, {{ user?.name }}</span>
-                <button @click="showLogoutModal = true"
-                        class="text-xs text-red-600 hover:text-red-700 font-semibold bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-all duration-200">
-                    Cerrar Sesión
-                </button>
-            </div>
-        </nav>
-
-        <main class="p-8 flex-1">
-            <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 max-w-4xl">
-                <h2 class="text-xl font-bold text-slate-800 mb-2">¡Bienvenido al Sistema!</h2>
-                <p class="text-slate-600 text-sm">
-                    Has ingresado correctamente a la infraestructura aislada de tu empresa. Desde aquí podrás gestionar inventarios, facturación y clientes de forma segura.
-                </p>
-            </div>
-        </main>
-    </div>
-
-    <div v-if="showLogoutModal"
-         class="fixed inset-0 z-50 flex items-center justify-center p-4">
-
-        <div class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm transition-opacity" @click="showLogoutModal = false"></div>
-
-        <div class="bg-white rounded-2xl shadow-xl border border-slate-100 max-w-sm w-full p-6 relative z-10 transform transition-all scale-100">
-
-            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-50 mb-4">
-                <svg class="h-6 w-6 text-red-600" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 9V5.25A2.25 2.25 0 0 0 13.5 3h-6a2.25 2.25 0 0 0-2.25 2.25v13.5A2.25 2.25 0 0 0 7.5 21h6a2.25 2.25 0 0 0 2.25-2.25V15M12 9l-3 3m0 0 3 3m-3-3h12.75" />
-                </svg>
-            </div>
-
-            <div class="text-center mb-6">
-                <h3 class="text-lg font-bold text-slate-800 tracking-tight">¿Cerrar sesión en el sistema?</h3>
-                <p class="text-slate-500 text-sm mt-2">Cualquier cambio no guardado en los módulos activos se perderá.</p>
-            </div>
-
-            <div class="flex gap-3">
-                <button @click="showLogoutModal = false"
-                        class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold py-2.5 px-4 rounded-xl text-sm active:scale-[0.98] transition-all duration-200">
-                    Cancelar
-                </button>
-
-                <Link href="/logout"
-                      method="post"
-                      as="button"
-                      @click="showLogoutModal = false"
-                      class="flex-1 text-white font-semibold py-2.5 px-4 rounded-xl text-sm shadow-md bg-red-600 hover:bg-red-700 active:scale-[0.98] transition-all duration-200 text-center">
-                    Sí, Salir
+            <!-- Información del Usuario en la Base del Menú (Optimizado) -->
+            <div class="p-4 bg-slate-700 border-t border-slate-800 flex items-center justify-between gap-2">
+                <div class="truncate flex flex-col gap-1">
+                    <!-- Nombre del usuario con mayor peso -->
+                    <p class="font-bold text-slate-100 text-sm truncate select-none">
+                        {{ user.name }}
+                    </p>
+                    <!-- Badge del Rol con alto contraste y visibilidad -->
+                    <div class="flex">
+                        <span class="px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase bg-slate-800 text-emerald-400 border border-emerald-500/30 shadow-sm">
+                            🛡️ {{ user.role }}
+                        </span>
+                    </div>
+                </div>
+                <!-- Botón de salida limpio -->
+                <Link href="/logout" method="post" as="button" class="text-slate-500 hover:text-rose-400 font-bold text-lg p-1.5 hover:bg-slate-900 rounded-lg transition-colors shrink-0" title="Cerrar Sesión">
+                    <!-- Icono o emoji de salida -->
+                    🚪
                 </Link>
             </div>
+        </aside>
+
+        <div class="flex-1 flex flex-col overflow-hidden">
+
+            <header class="bg-white border-b border-slate-200 px-6 py-4 flex justify-between items-center shadow-sm">
+                <div class="flex items-center gap-4">
+                    <button @click="isSidebarOpen = !isSidebarOpen" class="text-slate-600 hover:text-slate-900 font-bold text-lg hidden md:block">
+                        ☰
+                    </button>
+                    <div>
+                        <h1 class="text-xl font-bold text-slate-800">Centro de Control</h1>
+                        <p class="text-xs text-slate-500">Resumen operativo del estado actual del negocio.</p>
+                    </div>
+                </div>
+            </header>
+
+            <main class="p-6 space-y-6 overflow-y-auto flex-1">
+
+                <div v-if="user.role === 'admin'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ventas del Mes</p>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.total_sales.toLocaleString('es-CO') }}</h3>
+                        </div>
+                        <span class="text-2xl bg-emerald-50 p-3 rounded-xl">📈</span>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Efectivo en Caja</p>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.cash_balance.toLocaleString('es-CO') }}</h3>
+                        </div>
+                        <span class="text-2xl bg-blue-50 p-3 rounded-xl">💵</span>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Cartera por Cobrar</p>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.accounts_receivable.toLocaleString('es-CO') }}</h3>
+                        </div>
+                        <span class="text-2xl bg-amber-50 p-3 rounded-xl">⏳</span>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
+                        <div>
+                            <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Alertas de Stock</p>
+                            <h3 class="text-xl font-black text-rose-600 mt-1">{{ stats.low_stock_count }} Críticos</h3>
+                        </div>
+                        <span class="text-2xl bg-rose-50 p-3 rounded-xl">⚠️</span>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">💼 Cuentas Por Cobrar</h4>
+                            <span class="text-[10px] font-bold px-2 py-0.5 bg-amber-50 text-amber-700 rounded-full border border-amber-200">Clientes</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                                        <th class="p-2.5">Factura</th>
+                                        <th class="p-2.5">Cliente</th>
+                                        <th class="p-2.5 text-right">Saldo</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-slate-600">
+                                    <tr v-for="item in accountsReceivableList" :key="item.id" class="hover:bg-slate-50">
+                                        <td class="p-2.5 font-bold font-mono text-slate-700">{{ item.number }}</td>
+                                        <td class="p-2.5 font-medium truncate max-w-[120px]">{{ item.client }}</td>
+                                        <td class="p-2.5 text-right font-extrabold text-slate-900">$ {{ item.total.toLocaleString('es-CO') }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">💸 Cuentas Por Pagar</h4>
+                            <span class="text-[10px] font-bold px-2 py-0.5 bg-rose-50 text-rose-700 rounded-full border border-rose-200">Proveedores</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                                        <th class="p-2.5">Factura</th>
+                                        <th class="p-2.5">Proveedor</th>
+                                        <th class="p-2.5 text-right">A Pagar</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-slate-600">
+                                    <tr v-for="item in accountsPayableList" :key="item.id" class="hover:bg-slate-50">
+                                        <td class="p-2.5 font-bold font-mono text-slate-700">{{ item.number }}</td>
+                                        <td class="p-2.5 font-medium truncate max-w-[120px]">{{ item.provider }}</td>
+                                        <td class="p-2.5 text-right font-extrabold text-rose-600">$ {{ item.total.toLocaleString('es-CO') }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+                        <div class="flex justify-between items-center mb-3">
+                            <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">⚠️ Quiebre de Stock</h4>
+                            <span class="text-[10px] font-bold px-2 py-0.5 bg-red-50 text-red-700 rounded-full border border-red-200">Reponer</span>
+                        </div>
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left text-xs border-collapse">
+                                <thead>
+                                    <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                                        <th class="p-2.5">Producto</th>
+                                        <th class="p-2.5 text-center">Actual</th>
+                                        <th class="p-2.5 text-center">Mín</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-slate-100 text-slate-600">
+                                    <tr v-for="prod in lowStockProducts" :key="prod.id" class="hover:bg-slate-50">
+                                        <td class="p-2.5 font-medium truncate max-w-[140px] text-slate-700">
+                                            {{ prod.name }}
+                                            <span class="block text-[10px] text-slate-400 font-mono">{{ prod.sku }}</span>
+                                        </td>
+                                        <td class="p-2.5 text-center font-bold text-rose-600 bg-rose-50/50">{{ prod.current_stock }}</td>
+                                        <td class="p-2.5 text-center font-semibold text-slate-400">{{ prod.min_stock }}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                </div>
+
+                <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">
+                    <div class="text-center sm:text-left">
+                        <h4 class="font-bold text-slate-800 text-sm">¿Deseas iniciar una transacción ágil?</h4>
+                        <p class="text-xs text-slate-400">Atajos optimizados para agilizar los procesos de facturación en mostrador.</p>
+                    </div>
+                    <div class="flex gap-2 w-full sm:w-auto">
+                        <Link href="/sales" class="flex-1 sm:flex-none text-center text-xs font-bold text-white px-5 py-2.5 rounded-xl shadow-sm transition-transform active:scale-95" :style="{ backgroundColor: tenant.primary_color }">
+                            ⚡ Terminal POS (Venta)
+                        </Link>
+                    </div>
+                </div>
+
+            </main>
         </div>
+
     </div>
 </template>

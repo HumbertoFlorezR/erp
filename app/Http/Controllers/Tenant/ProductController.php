@@ -80,14 +80,14 @@ class ProductController extends Controller
             'type'                => 'required|in:PRODUCTO,SERVICIO',
             'code'                => 'nullable|string|max:50',
             'name'                => 'required|string|max:150',
-            'description'         => 'nullable|string',
             'price_excluding_tax' => 'required|numeric|min:0',
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'tax_type'            => 'required|in:GRAVADO,EXENTO,EXCLUIDO',
-            'minimum_stock'       => 'nullable|numeric|min:0',
             'manage_stock'        => 'boolean',
             'is_perishable'       => 'boolean',
             'unit_measure_code'   => 'required|string|max:5',
+            // 'description'         => 'nullable|string',
+            // 'minimum_stock'       => 'nullable|numeric|min:0',
         ]);
 
         // Ajustes automáticos si es un Servicio
@@ -98,9 +98,22 @@ class ProductController extends Controller
             $validated['unit_measure_code'] = 'WSD'; // Estándar de servicio DIAN
         }
 
-        Product::create($validated);
+        // CREACIÓN: Corregido usando $validated y mapeando a tus columnas reales
+        $product = Product::create([
+            'type'                 => $validated['type'] ?? 'PRODUCTO',
+            'name'                 => $validated['name'],
+            'code'                 => $validated['code'] ?? 'GEN-' . time(), // 🛠️ Usa 'code'
+            'price_excluding_tax'  => $validated['price_excluding_tax'] ?? 0, // 🛠️ Tu costo real base
+            'average_cost'         => $validated['price_excluding_tax'] ?? 0, // 🛠️ Lo inicializamos como costo promedio
+            'price_sale'           => ($validated['price_excluding_tax'] ?? 0) * 1.30, // Margen sugerido provisional
+            'tax_rate'             => $validated['tax_rate'] ?? 19,
+            'tax_type'             => $validated['tax_type'] ?? 'GRAVADO',
+            'stock'                => 0, // Inicia en cero, la factura de compra le sumará el stock
+            'manage_stock'         => $validated['manage_stock'] ?? true, // 🛠️ Usa 'manage_stock'
+            'unit_measure_code'    => $validated['unit_measure_code'] ?? '94',
+        ]);
 
-        return redirect()->back()->with('success', 'Ítem registrado con éxito en el catálogo.');
+        return redirect()->back()->with('success', 'Ítem creado correctamente.');
     }
 
     /**
@@ -148,5 +161,47 @@ class ProductController extends Controller
         $product->update($validated);
 
         return redirect()->back()->with('success', 'Ítem actualizado correctamente.');
+    }
+
+    /**
+     * Crear un producto rápido desde el formulario de compras (Soporta Axios y Formularios Tradicionales)
+     */
+    public function storeQuick(Request $request)
+    {
+        $validated = $request->validate([
+            'name' => 'required|string|max:255',
+            'code' => 'nullable|string|unique:products,code', // Usamos columna real 'code'
+            'controlar_inventario' => 'required|boolean',
+            'price_cost' => 'nullable|numeric|min:0',
+        ]);
+
+        // Creamos el producto con valores mínimos por defecto
+        $product = Product::create([
+            'name' => $validated['name'],
+            'code' => $validated['code'] ?? 'GEN-' . time(),
+            'price_cost' => $request->input('price_excluding_tax', 0) ?? ($validated['price_cost'] ?? 0.00), // Mapeo seguro de ambos formularios
+            'price_sale' => ($validated['price_cost'] ?? 0.00) * 1.30,
+            'stock' => 0,
+            'controlar_inventario' => $validated['controlar_inventario'],
+        ]);
+
+        // 🌟 EL TRUCO MAGICO: Detectamos el origen de la petición
+        if ($request->wantsJson() || $request->ajax()) {
+            // Si viene de la modal de Compras (Axios), le mandamos el JSON que Vue necesita
+            return response()->json([
+                'success' => true,
+                'product' => [
+                    'id'   => $product->id,
+                    'name' => $product->name,
+                    'code' => $product->code,
+                    'price_cost' => $product->price_cost,
+                    'stock' => 0,
+                    'controlar_inventario' => $product->controlar_inventario
+                ]
+            ]);
+        }
+
+        // Si viene del formulario tradicional de Productos (Inertia), redirigimos normalmente
+        return redirect()->back()->with('success', 'Producto express creado correctamente.');
     }
 }

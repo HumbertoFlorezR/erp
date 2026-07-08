@@ -141,12 +141,15 @@ const isNit = computed(() => form.document_type === 'NIT');
                      :style="{ backgroundColor: tenant.primary_color }">
                     {{ tenant.company_name?.substring(0,2).toUpperCase() }}
                 </div>
-                <span class="font-bold text-slate-800 text-lg">{{ tenant.company_name }} - Panel de Control</span>
+
+                <div>
+                    <span class="font-bold text-slate-800 text-lg">{{ tenant.company_name }} - Terceros y Contactos</span>
+                    <p class="text-sm text-slate-500">Gestión integrada de clientes, proveedores y empleados para nómina.</p>
+                </div>
             </div>
 
             <div class="flex items-center gap-4">
-                <span class="text-sm text-slate-600 font-medium">Hola, {{ user?.name }}</span>
-                <Link href="/dashboard" class="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors">
+                <Link href="/dashboard" class="text-sm font-semibold text-slate-500 hover:text-slate-800 transition-colors border-2 p-1">
                     Volver al Inicio
                 </Link>
             </div>
@@ -154,12 +157,6 @@ const isNit = computed(() => form.document_type === 'NIT');
 
         <!-- CUERPO DEL MÓDULO -->
         <div class="p-6 max-w-7xl w-full mx-auto space-y-6 flex-1">
-
-            <div>
-                <h2 class="text-2xl font-bold text-slate-800 tracking-tight">Administración de Terceros</h2>
-                <p class="text-sm text-slate-500">Gestión integrada de clientes, proveedores y empleados para nómina.</p>
-            </div>
-
             <!-- BARRA DE ACCIONES -->
             <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
@@ -202,31 +199,31 @@ const isNit = computed(() => form.document_type === 'NIT');
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-200 text-sm text-slate-600">
-                            <tr v-for="contact in contacts.data" :key="contact.id" class="hover:bg-slate-50/50 transition-colors">
-                                <td class="px-6 py-4 whitespace-nowrap font-medium text-slate-700">
+                            <tr v-for="contact in contacts.data" :key="contact.id" class="hover:bg-slate-200/80 transition-colors">
+                                <td class="px-6 py-2 whitespace-nowrap font-medium text-slate-700">
                                     <span class="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded mr-1.5 font-bold">{{ contact.document_type }}</span>
                                     {{ contact.document_number }}{{ contact.verification_digit ? '-' + contact.verification_digit : '' }}
                                 </td>
-                                <td class="px-6 py-4 font-semibold text-slate-800">{{ contact.full_name }}</td>
-                                <td class="px-6 py-4">
+                                <td class="px-6 py-2 font-semibold text-slate-800">{{ contact.full_name }}</td>
+                                <td class="px-6 py-2">
                                     <div class="flex flex-col">
                                         <span class="font-medium text-slate-700">{{ contact.phone || 'Sin Teléfono' }}</span>
                                         <span class="text-xs text-slate-400">{{ contact.email || '-' }}</span>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap">
+                                <td class="px-6 py-2 whitespace-nowrap">
                                     <div class="flex gap-1.5 flex-wrap">
                                         <span v-if="contact.is_client" class="bg-blue-50 text-blue-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-100">Cliente</span>
                                         <span v-if="contact.is_supplier" class="bg-purple-50 text-purple-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-purple-100">Proveedor</span>
                                         <span v-if="contact.is_employee" class="bg-amber-50 text-amber-700 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-100">Empleado</span>
                                     </div>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-center">
+                                <td class="px-6 py-2 whitespace-nowrap text-center">
                                     <button @click="toggleStatus(contact.id)" :class="['relative inline-flex h-5 w-10 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none', contact.is_active ? 'bg-emerald-500' : 'bg-slate-200']">
                                         <span :class="['pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out', contact.is_active ? 'translate-x-5' : 'translate-x-0']"></span>
                                     </button>
                                 </td>
-                                <td class="px-6 py-4 whitespace-nowrap text-right">
+                                <td class="px-6 py-2 whitespace-nowrap text-right">
                                     <button
                                         class="text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all"
                                         @click="openEditModal(contact)">

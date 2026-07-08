@@ -42,6 +42,7 @@ class HandleInertiaRequests extends Middleware
                     'id'    => \Illuminate\Support\Facades\Auth::user()->id,
                     'name'  => \Illuminate\Support\Facades\Auth::user()->name,
                     'email' => \Illuminate\Support\Facades\Auth::user()->email,
+                    'role'  => \Illuminate\Support\Facades\Auth::user()->role,
                 ] : null,
             ],
         ]);

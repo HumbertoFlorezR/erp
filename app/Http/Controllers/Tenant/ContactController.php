@@ -69,25 +69,40 @@ class ContactController extends Controller
      */
     public function store(Request $request)
     {
+        // 1. Validamos todos los campos que pueden venir del formulario completo o express
         $validated = $request->validate([
-            'document_type'   => 'required|string|max:5',
-            'document_number' => 'required|string|max:20',
+            'document_type'   => 'required|string|max:20',
+            'document_number' => 'required|string|max:50|unique:contacts,document_number',
             'first_name'      => 'nullable|required_without:company_name|string|max:100',
             'last_name'       => 'nullable|required_without:company_name|string|max:100',
             'company_name'    => 'nullable|required_without:first_name|string|max:200',
             'email'           => 'nullable|email|max:150',
             'phone'           => 'nullable|string|max:20',
             'address'         => 'nullable|string|max:255',
-            'city_code'       => 'nullable|string|max:10',
             'regime_type'     => 'required|string',
             'is_client'       => 'boolean',
             'is_supplier'     => 'boolean',
             'is_employee'     => 'boolean',
         ]);
 
-        Contact::create($validated);
+        // 2. Creación del registro en la base de datos usando el array $validated
+        $contact = Contact::create([
+            'document_type'   => $validated['document_type'],
+            'document_number' => $validated['document_number'],
+            'first_name'      => $validated['first_name'] ?? null,
+            'last_name'       => $validated['last_name'] ?? null,
+            'company_name'    => $validated['company_name'] ?? null,
+            'email'           => $validated['email'] ?? null,
+            'phone'           => $validated['phone'] ?? null,
+            'address'         => $validated['address'] ?? null,
+            'regime_type'     => $validated['regime_type'],
+            'is_client'       => $request->boolean('is_client', false),
+            'is_supplier'     => $request->boolean('is_supplier', false),
+            'is_employee'     => $request->boolean('is_employee', false),
+            'status'          => 'ACTIVO',
+        ]);
 
-        return redirect()->back()->with('success', 'Tercero creado con éxito.');
+        return redirect()->route('contacts.index')->with('success', 'Tercero creado con éxito.');
     }
 
     /**
@@ -133,5 +148,44 @@ class ContactController extends Controller
         $contact->update($validated);
 
         return redirect()->back()->with('success', 'Tercero actualizado con éxito.');
+    }
+
+    /**
+     * Crear un proveedor rápido desde el formulario de compras (Petición AJAX)
+     */
+    public function storeQuickProvider(Request $request)
+    {
+        // 1. Validamos todos los campos que nos está enviando el formulario express
+        $validated = $request->validate([
+            'company_name'    => 'required|string|max:255',
+            'document_number' => 'required|string|unique:contacts,document_number',
+            'document_type'   => 'nullable|string|max:20',
+            'regime_type'     => 'nullable|string|max:50',
+            'first_name'      => 'nullable|string|max:100',
+            'last_name'       => 'nullable|string|max:100',
+        ]);
+
+        // 2. CREACIÓN: Asignamos usando los datos validados o valores por defecto seguros
+        $provider = Contact::create([
+            'company_name'    => $validated['company_name'],
+            'document_number' => $validated['document_number'],
+            'document_type'   => $validated['document_type'] ?? 'NIT', // 🛠️ Respaldo seguro si viene vacío
+            'regime_type'     => $validated['regime_type'] ?? 'RESPONSABLE_IVA', // 🛠️ Respaldo seguro si viene vacío
+            'first_name'      => $validated['first_name'] ?? null,
+            'last_name'       => $validated['last_name'] ?? null,
+            'is_supplier'     => true,  // Forzamos que sea un proveedor para las compras
+            'is_client'       => false,
+            'is_employee'     => false,
+        ]);
+
+        // 3. Retornamos la respuesta JSON limpia para que Vue la procese
+        return response()->json([
+            'success' => true,
+            'contact' => [
+                'id'              => $provider->id,
+                'company_name'    => $provider->company_name,
+                'document_number' => $provider->document_number
+            ]
+        ]);
     }
 }
