@@ -3,10 +3,12 @@
 use App\Http\Controllers\Admin\EmpresaController;
 use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
+use App\Http\Controllers\Tenant\DianResolutionController;
 use App\Http\Controllers\Tenant\ExportController;
 use App\Http\Controllers\Tenant\ProductController;
-use App\Http\Controllers\Tenant\TenantAuthController;
 use App\Http\Controllers\Tenant\PurchaseInvoiceController;
+use App\Http\Controllers\Tenant\SalesPosController;
+use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
@@ -60,6 +62,18 @@ Route::group([
         Route::get('purchase-invoices/{purchase_invoice}', [PurchaseInvoiceController::class, 'show'])->name('purchase-invoices.show');
         Route::post('purchase-invoices/{id}/cancel', [PurchaseInvoiceController::class, 'cancel'])->name('purchase-invoices.cancel');
 
+        // --- MÓDULO ADMINISTRATIVO DE CONFIGURACIÓN ---
+        Route::get('/settings/resolutions', [DianResolutionController::class, 'index'])->name('settings.resolutions.index');
+        Route::get('/settings/resolutions/create', [DianResolutionController::class, 'create'])->name('settings.resolutions.create');
+        Route::post('/settings/resolutions', [DianResolutionController::class, 'store'])->name('settings.resolutions.store');
+        Route::put('/settings/resolutions/{id}/toggle', [DianResolutionController::class, 'toggleActive'])->name('settings.resolutions.toggle');
+
+        // Rutas del Punto de Venta (POS)
+        Route::get('/sales/pos', [SalesPosController::class, 'index'])->name('sales.pos.index');
+        Route::post('/sales/pos', [SalesPosController::class, 'store'])->name('sales.pos.store');
+        Route::post('/sales/pos/customer', [SalesPosController::class, 'storeCustomer'])->name('sales.pos.customer');
+        Route::get('/sales/pos/search-customers', [SalesPosController::class, 'searchCustomers'])->name('sales.pos.search-customers');
+        Route::get('/sales/pos/search-products', [SalesPosController::class, 'searchProducts'])->name('sales.pos.search-products');
 
         /* Exportación de datos */
         Route::post('/export/preferences', [ExportController::class, 'savePreferences'])->name('export.preferences');

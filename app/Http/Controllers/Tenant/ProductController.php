@@ -45,6 +45,7 @@ class ProductController extends Controller
                 'id'                  => $product->id,
                 'type'                => $product->type,
                 'code'                => $product->code,
+                'barcode'             => $product->barcode,       // 👈 Mapeado
                 'name'                => $product->name,
                 'description'         => $product->description,
                 'average_cost'        => $product->average_cost,
@@ -52,6 +53,7 @@ class ProductController extends Controller
                 'price_excluding_tax' => $product->price_excluding_tax,
                 'tax_rate'            => $product->tax_rate,
                 'tax_type'            => $product->tax_type,
+                'discount_rate'       => $product->discount_rate,  // 👈 Mapeado
                 'stock'               => $product->stock,
                 'minimum_stock'       => $product->minimum_stock,
                 'manage_stock'        => $product->manage_stock,
@@ -59,10 +61,9 @@ class ProductController extends Controller
                 'unit_measure_code'   => $product->unit_measure_code,
                 'dian_code'           => $product->dian_code,
                 'is_active'           => $product->is_active,
-                // Atributos dinámicos añadidos desde el modelo
-                'is_low_stock'         => $product->is_low_stock,
-                'profit_margin'        => $product->profit_margin,
-                'price_including_tax'  => $product->price_including_tax,
+                'is_low_stock'        => $product->is_low_stock,
+                'profit_margin'       => $product->profit_margin,
+                'price_including_tax' => $product->price_including_tax,
             ]);
 
         return Inertia::render('Tenant/Products/Index', [
@@ -79,37 +80,36 @@ class ProductController extends Controller
         $validated = $request->validate([
             'type'                => 'required|in:PRODUCTO,SERVICIO',
             'code'                => 'nullable|string|max:50',
+            'barcode'             => 'nullable|string|max:50|unique:products,barcode', // 👈 Validado
             'name'                => 'required|string|max:150',
             'price_excluding_tax' => 'required|numeric|min:0',
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'tax_type'            => 'required|in:GRAVADO,EXENTO,EXCLUIDO',
+            'discount_rate'       => 'nullable|numeric|min:0|max:100',                 // 👈 Validado
             'manage_stock'        => 'boolean',
             'is_perishable'       => 'boolean',
             'unit_measure_code'   => 'required|string|max:5',
-            // 'description'         => 'nullable|string',
-            // 'minimum_stock'       => 'nullable|numeric|min:0',
         ]);
 
-        // Ajustes automáticos si es un Servicio
         if ($validated['type'] === 'SERVICIO') {
             $validated['manage_stock'] = false;
             $validated['minimum_stock'] = 0;
             $validated['is_perishable'] = false;
-            $validated['unit_measure_code'] = 'WSD'; // Estándar de servicio DIAN
+            $validated['unit_measure_code'] = 'WSD';
         }
 
-        // CREACIÓN: Corregido usando $validated y mapeando a tus columnas reales
-        $product = Product::create([
+        Product::create([
             'type'                 => $validated['type'] ?? 'PRODUCTO',
             'name'                 => $validated['name'],
-            'code'                 => $validated['code'] ?? 'GEN-' . time(), // 🛠️ Usa 'code'
-            'price_excluding_tax'  => $validated['price_excluding_tax'] ?? 0, // 🛠️ Tu costo real base
-            'average_cost'         => $validated['price_excluding_tax'] ?? 0, // 🛠️ Lo inicializamos como costo promedio
-            'price_sale'           => ($validated['price_excluding_tax'] ?? 0) * 1.30, // Margen sugerido provisional
+            'code'                 => $validated['code'] ?? 'GEN-' . time(),
+            'barcode'              => $validated['barcode'] ?? null,                  // 👈 Guardado
+            'price_excluding_tax'  => $validated['price_excluding_tax'] ?? 0,
+            'average_cost'         => $validated['price_excluding_tax'] ?? 0,
             'tax_rate'             => $validated['tax_rate'] ?? 19,
             'tax_type'             => $validated['tax_type'] ?? 'GRAVADO',
-            'stock'                => 0, // Inicia en cero, la factura de compra le sumará el stock
-            'manage_stock'         => $validated['manage_stock'] ?? true, // 🛠️ Usa 'manage_stock'
+            'discount_rate'        => $validated['discount_rate'] ?? 0.00,            // 👈 Guardado
+            'stock'                => 0,
+            'manage_stock'         => $validated['manage_stock'] ?? true,
             'unit_measure_code'    => $validated['unit_measure_code'] ?? '94',
         ]);
 
@@ -129,7 +129,7 @@ class ProductController extends Controller
 
         return redirect()->back()->with('success', 'Estado del ítem modificado.');
     }
-/**
+    /**
      * Actualizar un producto o servicio existente.
      */
     public function update(Request $request, $tenant, $id)
@@ -139,18 +139,19 @@ class ProductController extends Controller
         $validated = $request->validate([
             'type'                => 'required|in:PRODUCTO,SERVICIO',
             'code'                => 'nullable|string|max:50',
+            'barcode'             => 'nullable|string|max:50|unique:products,barcode,' . $product->id, // 👈 Evita error de duplicado al editar
             'name'                => 'required|string|max:150',
             'description'         => 'nullable|string',
             'price_excluding_tax' => 'required|numeric|min:0',
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'tax_type'            => 'required|in:GRAVADO,EXENTO,EXCLUIDO',
+            'discount_rate'       => 'nullable|numeric|min:0|max:100',                                // 👈 Validado
             'minimum_stock'       => 'nullable|numeric|min:0',
             'manage_stock'        => 'boolean',
             'is_perishable'       => 'boolean',
             'unit_measure_code'   => 'required|string|max:5',
         ]);
 
-        // Forzar limpieza si se transformó o editó como Servicio
         if ($validated['type'] === 'SERVICIO') {
             $validated['manage_stock'] = false;
             $validated['minimum_stock'] = 0;

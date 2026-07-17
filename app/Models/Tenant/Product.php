@@ -15,6 +15,7 @@ class Product extends Model
     protected $fillable = [
         'type',
         'code',
+        'barcode',            // 👈 Agregado: Código de barras POS
         'name',
         'description',
         'average_cost',
@@ -22,6 +23,7 @@ class Product extends Model
         'price_excluding_tax',
         'tax_rate',
         'tax_type',
+        'discount_rate',      // 👈 Agregado: Descuento base
         'stock',
         'minimum_stock',
         'manage_stock',
@@ -39,6 +41,7 @@ class Product extends Model
         'last_purchase_price' => 'decimal:2',
         'price_excluding_tax' => 'decimal:2',
         'tax_rate' => 'decimal:2',
+        'discount_rate' => 'decimal:2', // 👈 Agregado
         'stock' => 'decimal:2',
         'minimum_stock' => 'decimal:2',
         'manage_stock' => 'boolean',
@@ -60,7 +63,6 @@ class Product extends Model
      */
     public function getIsLowStockAttribute(): bool
     {
-        // Solo aplica si el ítem es un PRODUCTO y tiene activo el control de stock
         if ($this->type !== 'PRODUCTO' || !$this->manage_stock) {
             return false;
         }
@@ -70,7 +72,6 @@ class Product extends Model
 
     /**
      * 📊 Margen de Utilidad Bruta Porcentual.
-     * Calcula cuánto porcentaje le ganas al producto basado en su costo promedio.
      */
     public function getProfitMarginAttribute(): float
     {
@@ -78,13 +79,12 @@ class Product extends Model
             return 0.00;
         }
 
-        // Fórmula: ((Precio Venta - Costo Promedio) / Precio Venta) * 100
         $profit = $this->price_excluding_tax - $this->average_cost;
         return round(($profit / $this->price_excluding_tax) * 100, 2);
     }
 
     /**
-     * 💵 Precio de Venta Final con el IVA incluido (Para visualización rápida en el ERP).
+     * 💵 Precio de Venta Final con el IVA incluido.
      */
     public function getPriceIncludingTaxAttribute(): float
     {
