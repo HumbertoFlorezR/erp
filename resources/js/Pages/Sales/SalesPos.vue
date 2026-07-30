@@ -1,13 +1,15 @@
 <script setup>
 import { ref, computed, watch } from 'vue';
-import { Head, usePage, Link, useForm, router } from '@inertiajs/vue3';
+import { Head, usePage, Link, useForm } from '@inertiajs/vue3';
 import axios from 'axios';
 
 // Recibir datos iniciales desde el controlador
 const props = defineProps({
     nextInvoice: String,
     activeResolution: Object,
-    defaultCustomer: Object
+    defaultCustomer: Object,
+    saleType: String,
+    paymentMethod: String
 });
 
 const page = usePage();
@@ -16,19 +18,26 @@ const user = computed(() => page.props.auth?.user || { name: 'Cajero' });
 
 // --- CONFIGURACIÓN DE IMPRESIÓN HÍBRIDA ---
 const configTenant = ref({
-    pos_print_mode: 'browser', // Opciones: 'browser' (Nativo de Windows/Mac) o 'escpos' (Servidor Local)
-    pos_ticket_width: '58mm'    // Opciones estándar: '58mm' o '80mm'
+    pos_print_mode: 'browser', // 'browser' o 'escpos'
+    pos_ticket_width: '58mm'
 });
 
 // --- ESTADOS DE CAPTURA ---
 const selectedCustomer = ref(props.defaultCustomer || { id: null, first_name: 'Consumidor', last_name: 'Final', document_number: '222222222222' });
 const cart = ref([]);
+
+// --- MODALIDAD DE VENTA Y PAGO ---
+const saleType = ref('CONTADO'); // 'CONTADO', 'CREDITO', 'SEPARE'
+const paymentMethod = ref('EFECTIVO');
+const receivedAmount = ref(0);
+const transactionReference = ref('');
+
 // --- ESTADOS DE PRODUCTOS ---
 const searchProductQuery = ref('');
 const productsFound = ref([]);
 const showProductDropdown = ref(false);
 
-// Función para buscar productos de forma dinámica
+// Función para buscar productos de forma dinámica (Endpoints originales)
 const searchProducts = async () => {
     if (searchProductQuery.value.length < 2) {
         productsFound.value = [];
@@ -47,7 +56,6 @@ const searchProducts = async () => {
     }
 };
 
-// Capturar el evento Enter para lectores de código de barras
 const handleProductEnter = () => {
     if (productsFound.value.length === 1) {
         addToCart(productsFound.value[0]);
@@ -56,7 +64,6 @@ const handleProductEnter = () => {
     }
 };
 
-// Función de agregar al carrito (optimizada para usar las propiedades reales del modelo)
 const addToCart = (product) => {
     const existing = cart.value.find(item => item.id === product.id);
     if (existing) {
@@ -65,8 +72,8 @@ const addToCart = (product) => {
         cart.value.push({
             id: product.id,
             name: product.name,
-            code: product.code,
-            price_excluding_tax: parseFloat(product.price_excluding_tax),
+            code: product.code || product.barcode || '',
+            price_excluding_tax: parseFloat(product.price_excluding_tax || product.price),
             tax_rate: parseFloat(product.tax_rate || 0),
             discount_p: 0,
             qty: 1
@@ -77,166 +84,12 @@ const addToCart = (product) => {
     showProductDropdown.value = false;
 };
 
-const paymentMethod = ref('EFECTIVO');
-const receivedAmount = ref(0);
-const transactionReference = ref('');
+const removeFromCart = (index) => cart.value.splice(index, 1);
+
+// --- BÚSQUEDA DE CLIENTES ---
 const searchQuery = ref('');
 const customersFound = ref([]);
 const showDropdown = ref(false);
-
-// --- MODAL DE CLIENTE NUEVO ---
-const showCustomerModal = ref(false);
-const customerForm = useForm({
-    document_type: 'CC',
-    document_number: '',
-    first_name: '',
-    last_name: '',
-    company_name: '',
-    phone: '',
-    email: ''
-});
-
-const removeFromCart = (index) => cart.value.splice(index, 1);
-
-// --- TOTALES COMPUTADOS ---
-const totalItems = computed(() => cart.value.reduce((acc, item) => acc + item.qty, 0));
-
-const financialTotals = computed(() => {
-    let subtotal = 0;
-    let discounts = 0;
-    let taxes = 0;
-
-    cart.value.forEach(item => {
-        const itemSubtotalRaw = item.price_excluding_tax * item.qty;
-        const itemDiscount = itemSubtotalRaw * (item.discount_p / 100);
-        const itemTax = (itemSubtotalRaw - itemDiscount) * (item.tax_rate / 100);
-
-        subtotal += itemSubtotalRaw;
-        discounts += itemDiscount;
-        taxes += itemTax;
-    });
-
-    const total = (subtotal - discounts) + taxes;
-
-    return { subtotal, discounts, taxes, total };
-});
-
-const changeAmount = computed(() => {
-    if (paymentMethod.value !== 'EFECTIVO') return 0;
-    const change = receivedAmount.value - financialTotals.value.total;
-    return change > 0 ? change : 0;
-});
-
-// Inicializar el efectivo recibido con el total exacto de forma cómoda
-watch(() => financialTotals.value.total, (newTotal) => {
-    if (paymentMethod.value === 'EFECTIVO') receivedAmount.value = Math.ceil(newTotal);
-});
-
-// --- LÓGICA DE GESTIÓN DE IMPRESIÓN ---
-const triggerBrowserPrint = () => {
-    setTimeout(() => {
-        window.print();
-    }, 350);
-};
-
-const sendEscPosToLocalAgent = async (invoiceNumber) => {
-    const ESC = '\u001b';
-    const GS = '\u001d';
-
-    let commands = ESC + '@'; // Inicializar tiquetera
-    commands += ESC + 'p' + '\u0000' + '\u0019' + '\u00fa'; // Pulso eléctrico para cajón monedero
-    commands += ESC + 'a' + '\u0001'; // Centrar texto
-    commands += `${tenant.value.company_name.toUpperCase()}\n`;
-    commands += "PUNTOS DE VENTA INTEGRADOS\n\n";
-    commands += ESC + 'a' + '\u0000'; // Alinear a la izquierda
-    commands += `Factura Nro: ${invoiceNumber || props.nextInvoice}\n`;
-    commands += `Fecha: ${new Date().toLocaleDateString('es-CO')}\n`;
-    commands += `Cliente: ${selectedCustomer.value.company_name || (selectedCustomer.value.first_name + ' ' + selectedCustomer.value.last_name)}\n`;
-    commands += `Doc: ${selectedCustomer.value.document_number}\n`;
-    commands += "--------------------------------\n";
-
-    cart.value.forEach(item => {
-        commands += `${item.qty}x ${item.name.substring(0, 20)}\n`;
-        const itemSub = (item.price_excluding_tax * item.qty) * (1 - item.discount_p/100) * (1 + item.tax_rate/100);
-        commands += `               $${Math.round(itemSub).toLocaleString('es-CO')}\n`;
-    });
-
-    commands += "--------------------------------\n";
-    commands += `TOTAL NETO:    $${Math.round(financialTotals.value.total).toLocaleString('es-CO')}\n`;
-    commands += `Metodo Pago:   ${paymentMethod.value}\n`;
-    if (paymentMethod.value === 'EFECTIVO') {
-        commands += `Recibido:      $${receivedAmount.value.toLocaleString('es-CO')}\n`;
-        commands += `Vueltos:       $${Math.round(changeAmount.value).toLocaleString('es-CO')}\n`;
-    }
-    commands += "\n" + ESC + 'a' + '\u0001' + "¡Gracias por su compra!\n\n\n\n";
-    commands += GS + 'V' + '\u0041' + '\u0003'; // Corte parcial de papel de la tiquetera
-
-    try {
-        await axios.post('http://localhost:9000/print', {
-            printer_name: 'POS-58',
-            content: commands
-        });
-    } catch (e) {
-        console.warn("Agente local ESC/POS inactivo en puerto 9000. Forzando vista del navegador.");
-        triggerBrowserPrint();
-    }
-};
-
-// --- ENVÍO DE LA VENTA AL BACKEND ---
-const submitSale = () => {
-    if (cart.value.length === 0) return alert('El carrito está vacío');
-
-    const formPayload = {
-        customer_id: selectedCustomer.value.id,
-        items: cart.value.map(i => ({ id: i.id, qty: i.qty, discount_p: i.discount_p })),
-        payments: [{
-            method: paymentMethod.value,
-            amount: financialTotals.value.total,
-            received_amount: paymentMethod.value === 'EFECTIVO' ? receivedAmount.value : financialTotals.value.total,
-            reference: transactionReference.value
-        }]
-    };
-
-    axios.post('/sales/pos', formPayload)
-        .then(async (response) => {
-            // Evaluamos el canal tecnológico antes de refrescar
-            if (configTenant.value.pos_print_mode === 'escpos') {
-                await sendEscPosToLocalAgent(response.data?.invoice_number);
-                // Forzamos la recarga nativa limpia por JS para evitar el fallo de parámetros de Laravel
-                window.location.href = window.location.href;
-            } else {
-                triggerBrowserPrint();
-                setTimeout(() => {
-                    window.location.href = window.location.href;
-                }, 1000);
-            }
-        })
-        .catch(err => {
-            // Validamos si el error es el de redirección (pero la venta sí se guardó)
-            if (err.response && err.response.status === 500 && err.response.data?.includes?.('Missing parameter: tenant')) {
-                // Si el error fue solo la redirección, imprimimos y recargamos igual
-                if (configTenant.value.pos_print_mode === 'escpos') {
-                    sendEscPosToLocalAgent();
-                } else {
-                    triggerBrowserPrint();
-                }
-                setTimeout(() => { window.location.href = window.location.href; }, 1000);
-            } else {
-                alert('Error al procesar la venta. Verifique la resolución DIAN.');
-            }
-        });
-};
-
-const createCustomerQuickly = () => {
-    axios.post('/sales/pos/customer', customerForm.data())
-        .then(res => {
-            if (res.data.success) {
-                selectedCustomer.value = res.data.customer;
-                showCustomerModal.value = false;
-                customerForm.reset();
-            }
-        });
-};
 
 const searchCustomers = async () => {
     if (searchQuery.value.length < 3) {
@@ -262,15 +115,196 @@ const selectCustomer = (customer) => {
     showDropdown.value = false;
     customersFound.value = [];
 };
+
+// --- MODAL DE CLIENTE NUEVO ---
+const showCustomerModal = ref(false);
+const customerForm = useForm({
+    document_type: 'CC',
+    document_number: '',
+    first_name: '',
+    last_name: '',
+    company_name: '',
+    phone: '',
+    email: ''
+});
+
+const createCustomerQuickly = () => {
+    axios.post('/sales/pos/customer', customerForm.data())
+        .then(res => {
+            if (res.data.success) {
+                selectedCustomer.value = res.data.customer;
+                showCustomerModal.value = false;
+                customerForm.reset();
+            }
+        });
+};
+
+// --- CÁLCULOS FINANCIEROS COMPUTADOS ---
+const totalItems = computed(() => cart.value.reduce((acc, item) => acc + item.qty, 0));
+
+const financialTotals = computed(() => {
+    let subtotal = 0;
+    let discounts = 0;
+    let taxes = 0;
+
+    cart.value.forEach(item => {
+        const itemSubtotalRaw = item.price_excluding_tax * item.qty;
+        const itemDiscount = itemSubtotalRaw * (item.discount_p / 100);
+        const itemTax = (itemSubtotalRaw - itemDiscount) * (item.tax_rate / 100);
+
+        subtotal += itemSubtotalRaw;
+        discounts += itemDiscount;
+        taxes += itemTax;
+    });
+
+    const total = (subtotal - discounts) + taxes;
+
+    return { subtotal, discounts, taxes, total };
+});
+
+// Vueltos o Saldo pendiente según modalidad
+const changeAmount = computed(() => {
+    if (saleType.value !== 'CONTADO' || paymentMethod.value !== 'EFECTIVO') return 0;
+    const change = receivedAmount.value - financialTotals.value.total;
+    return change > 0 ? change : 0;
+});
+
+const dueAmount = computed(() => {
+    if (saleType.value === 'CONTADO') return 0;
+    const pending = financialTotals.value.total - receivedAmount.value;
+    return pending > 0 ? pending : 0;
+});
+
+// Ajustar sugerencia de monto al cambiar modalidad
+watch(() => financialTotals.value.total, (newTotal) => {
+    if (saleType.value === 'CONTADO') receivedAmount.value = Math.ceil(newTotal);
+});
+
+watch(saleType, (newType) => {
+    if (newType === 'CONTADO') {
+        receivedAmount.value = Math.ceil(financialTotals.value.total);
+    } else if (newType === 'CREDITO') {
+        receivedAmount.value = 0; // Puede abonar $0 o un valor parcial
+    } else if (newType === 'SEPARE') {
+        receivedAmount.value = Math.round(financialTotals.value.total * 0.2); // Sugerir 20%
+    }
+});
+
+const isGenericCustomer = computed(() => {
+    return !selectedCustomer.value?.id || selectedCustomer.value?.document_number === '222222222222';
+});
+
+// --- IMPRESIÓN ESC/POS ---
+const triggerBrowserPrint = () => {
+    setTimeout(() => {
+        window.print();
+    }, 350);
+};
+
+const sendEscPosToLocalAgent = async (invoiceNumber) => {
+    const ESC = '\u001b';
+    const GS = '\u001d';
+
+    let commands = ESC + '@';
+    commands += ESC + 'p' + '\u0000' + '\u0019' + '\u00fa';
+    commands += ESC + 'a' + '\u0001';
+    commands += `${tenant.value.company_name.toUpperCase()}\n`;
+    commands += "PUNTOS DE VENTA INTEGRADOS\n\n";
+    commands += ESC + 'a' + '\u0000';
+    commands += `Factura Nro: ${invoiceNumber || props.nextInvoice}\n`;
+    commands += `Tipo Venta:  ${saleType.value}\n`;
+    commands += `Fecha: ${new Date().toLocaleDateString('es-CO')}\n`;
+    commands += `Cliente: ${selectedCustomer.value.company_name || (selectedCustomer.value.first_name + ' ' + selectedCustomer.value.last_name)}\n`;
+    commands += `Doc: ${selectedCustomer.value.document_number}\n`;
+    commands += "--------------------------------\n";
+
+    cart.value.forEach(item => {
+        commands += `${item.qty}x ${item.name.substring(0, 20)}\n`;
+        const itemSub = (item.price_excluding_tax * item.qty) * (1 - item.discount_p/100) * (1 + item.tax_rate/100);
+        commands += `               $${Math.round(itemSub).toLocaleString('es-CO')}\n`;
+    });
+
+    commands += "--------------------------------\n";
+    commands += `TOTAL NETO:    $${Math.round(financialTotals.value.total).toLocaleString('es-CO')}\n`;
+
+    if (saleType.value === 'CONTADO') {
+        commands += `Metodo Pago:   ${paymentMethod.value}\n`;
+        if (paymentMethod.value === 'EFECTIVO') {
+            commands += `Recibido:      $${receivedAmount.value.toLocaleString('es-CO')}\n`;
+            commands += `Vueltos:       $${Math.round(changeAmount.value).toLocaleString('es-CO')}\n`;
+        }
+    } else {
+        commands += `Abono Inicial: $${receivedAmount.value.toLocaleString('es-CO')}\n`;
+        commands += `SALDO PEND:    $${Math.round(dueAmount.value).toLocaleString('es-CO')}\n`;
+    }
+
+    commands += "\n" + ESC + 'a' + '\u0001' + "¡Gracias por su compra!\n\n\n\n";
+    commands += GS + 'V' + '\u0041' + '\u0003';
+
+    try {
+        await axios.post('http://localhost:9000/print', {
+            printer_name: 'POS-58',
+            content: commands
+        });
+    } catch (e) {
+        console.warn("Agente local ESC/POS inactivo. Forzando vista del navegador.");
+        triggerBrowserPrint();
+    }
+};
+
+// --- PROCESAR LA VENTA ---
+const submitSale = () => {
+    if (cart.value.length === 0) return alert('El carrito está vacío.');
+
+    // Validación cliente para Crédito/Separe
+    if (saleType.value !== 'CONTADO' && isGenericCustomer.value) {
+        return alert('⚠️ Para ventas a Crédito o Plan Separe es obligatorio seleccionar un cliente registrado.');
+    }
+
+    if (saleType.value === 'CONTADO' && paymentMethod.value === 'EFECTIVO' && receivedAmount.value < financialTotals.value.total) {
+        return alert('⚠️ El valor recibido es menor al total de la venta.');
+    }
+
+    if (saleType.value === 'SEPARE' && receivedAmount.value <= 0) {
+        return alert('⚠️ El Plan Separe requiere ingresar un abono inicial.');
+    }
+
+    const formPayload = {
+        customer_id: selectedCustomer.value.id,
+        sale_type: saleType.value,
+        items: cart.value.map(i => ({ id: i.id, qty: i.qty, discount_p: i.discount_p })),
+        payments: receivedAmount.value > 0 ? [{
+            method: paymentMethod.value,
+            amount: Math.min(receivedAmount.value, financialTotals.value.total),
+            received_amount: receivedAmount.value,
+            reference: transactionReference.value
+        }] : []
+    };
+
+    axios.post('/sales/pos', formPayload)
+        .then(async (response) => {
+            if (configTenant.value.pos_print_mode === 'escpos') {
+                await sendEscPosToLocalAgent(response.data?.invoice_number);
+                window.location.href = window.location.href;
+            } else {
+                triggerBrowserPrint();
+                setTimeout(() => {
+                    window.location.href = window.location.href;
+                }, 1000);
+            }
+        })
+        .catch(err => {
+            const errorMsg = err.response?.data?.message || 'Error al procesar la venta. Verifique la resolución DIAN.';
+            alert(errorMsg);
+        });
+};
 </script>
 
 <template>
     <Head title="Facturación POS" />
     <div class="min-h-screen bg-slate-100 font-sans print:bg-white print:p-0">
 
-        <!-- CONTENEDOR DE PANTALLA EXCLUSIVO: SE OCULTA AL ENVIAR A LA IMPRESORA -->
         <div class="screen-layout">
-            <!-- CABECERA SUPERIOR -->
             <nav class="bg-white border-b border-slate-200 px-6 py-2 flex justify-between items-center shadow-sm">
                 <div class="flex items-center gap-3">
                     <div class="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm"
@@ -280,7 +314,6 @@ const selectCustomer = (customer) => {
 
                     <div>
                         <span class="font-bold text-slate-800 text-lg">{{ tenant.company_name }}</span>
-                        <p class="text-lg font-bold text-slate-800">Terminal de Venta POS</p>
                         <p class="text-xs text-slate-400">⚡ Cajero: <span class="font-bold text-slate-600">{{ user.name }}</span> | {{ new Date().toLocaleDateString('es-CO') }}</p>
                     </div>
                 </div>
@@ -306,8 +339,8 @@ const selectCustomer = (customer) => {
             </nav>
 
             <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 items-start mt-3 px-4">
+
                 <div class="lg:col-span-8 space-y-3">
-                    <!-- CONTENEDOR ASOCIACIÓN DE CLIENTES -->
                     <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 relative">
                         <div class="flex justify-between items-center mb-2">
                             <label class="text-xs font-bold text-slate-400 uppercase tracking-wide">👤 Cliente de la Venta</label>
@@ -342,7 +375,6 @@ const selectCustomer = (customer) => {
                         </div>
                     </div>
 
-                    <!-- ESCANEAR O BUSCAR PRODUCTO -->
                     <div class="bg-white p-2 rounded-2xl shadow-sm border border-slate-200 relative">
                         <label class="text-xs font-bold text-slate-400 uppercase tracking-wide block mb-2">📦 Escanear o Buscar Producto</label>
                         <div class="relative">
@@ -366,7 +398,6 @@ const selectCustomer = (customer) => {
                         </div>
                     </div>
 
-                    <!-- TABLA CARRITO DE COMPRAS -->
                     <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
                         <table class="w-full text-left text-xs border-collapse">
                             <thead>
@@ -407,49 +438,106 @@ const selectCustomer = (customer) => {
                     </div>
                 </div>
 
-                <!-- RESUMEN CAJA DERECHA -->
                 <div class="lg:col-span-4">
-                    <div class="bg-white p-6 rounded-2xl shadow-xl border border-slate-200 relative overflow-hidden flex flex-col">
-                        <div class="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-slate-200 via-slate-300 to-slate-200 border-b border-dashed border-slate-400"></div>
-                        <div class="text-center pb-4 border-b border-dashed border-slate-200 mt-2">
+                    <div class="bg-white p-5 rounded-2xl shadow-xl border border-slate-200 relative overflow-hidden flex flex-col space-y-4">
+                        <div class="text-center pb-2 border-b border-dashed border-slate-200">
                             <h3 class="font-black text-slate-800 text-sm tracking-widest uppercase">{{ tenant.company_name }}</h3>
                             <p class="text-[10px] text-slate-400 uppercase mt-0.5">Comprobante de Venta POS</p>
                         </div>
 
-                        <div class="py-4 space-y-2 text-xs border-b border-dashed border-slate-200 font-mono">
-                            <div class="flex justify-between text-slate-400 text-[11px]"><span>Items Facturados:</span><span class="font-bold text-slate-700">{{ totalItems }} u.</span></div>
-                            <div class="flex justify-between text-slate-500"><span>Subtotal Base:</span><span>$ {{ financialTotals.subtotal.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span></div>
-                            <div class="flex justify-between text-amber-600 font-bold"><span>Descuentos:</span><span>- $ {{ financialTotals.discounts.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span></div>
-                            <div class="flex justify-between text-slate-500"><span>Impuestos (IVA):</span><span>+ $ {{ financialTotals.taxes.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span></div>
-                            <div class="flex justify-between text-base font-black text-slate-900 pt-2 border-t border-slate-100"><span>TOTAL A PAGAR:</span><span>$ {{ financialTotals.total.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span></div>
-                        </div>
-
-                        <div class="py-4 space-y-4">
-                            <label class="text-xs font-bold text-slate-400 uppercase tracking-wide block">Forma de Pago del Cliente</label>
-                            <div class="grid grid-cols-2 gap-2">
-                                <button v-for="method in ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA_DEBITO', 'TARJETA_CREDITO']" :key="method" @click="paymentMethod = method" class="p-2.5 rounded-xl border text-[11px] font-extrabold transition-all text-center" :class="paymentMethod === method ? 'bg-slate-900 text-white border-transparent shadow-sm' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
-                                    {{ method.replace('_', ' ') }}
+                        <div>
+                            <label class="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide block mb-1">Modalidad de Operación</label>
+                            <div class="grid grid-cols-3 gap-1.5">
+                                <button
+                                    type="button"
+                                    @click="saleType = 'CONTADO'"
+                                    :class="['py-2 text-[11px] font-extrabold rounded-xl border transition-all text-center', saleType === 'CONTADO' ? 'bg-slate-900 text-white border-slate-900 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100']">
+                                    💵 Contado
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="saleType = 'CREDITO'"
+                                    :class="['py-2 text-[11px] font-extrabold rounded-xl border transition-all text-center', saleType === 'CREDITO' ? 'bg-amber-600 text-white border-amber-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100']">
+                                    💳 Crédito
+                                </button>
+                                <button
+                                    type="button"
+                                    @click="saleType = 'SEPARE'"
+                                    :class="['py-2 text-[11px] font-extrabold rounded-xl border transition-all text-center', saleType === 'SEPARE' ? 'bg-purple-600 text-white border-purple-600 shadow-sm' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100']">
+                                    📦 Separe
                                 </button>
                             </div>
+                        </div>
 
-                            <div v-if="paymentMethod === 'EFECTIVO'" class="bg-emerald-50/50 p-4 rounded-xl border border-emerald-200 space-y-3">
-                                <div class="flex justify-between items-center gap-2">
-                                    <label class="text-xs font-bold text-emerald-800">Efectivo Recibido:</label>
-                                    <input v-model.number="receivedAmount" type="number" class="w-32 p-1.5 text-xs text-right font-bold text-emerald-900 border-emerald-300 rounded-lg focus:ring-emerald-500 bg-white" />
-                                </div>
-                                <div class="flex justify-between items-center pt-2 border-t border-emerald-200/50">
-                                    <span class="text-xs font-bold text-emerald-800">Cambio / Vueltos:</span>
-                                    <span class="text-lg font-black text-emerald-600 font-mono">$ {{ changeAmount.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                        <div v-if="saleType !== 'CONTADO' && isGenericCustomer" class="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[10px] font-bold text-amber-800">
+                            ⚠️ Debe asociar un cliente registrado (con CC o NIT) para operaciones a Crédito o Plan Separe.
+                        </div>
+
+                        <div class="bg-slate-900 text-white p-4 rounded-xl space-y-2 text-xs font-mono shadow-inner">
+                            <div class="flex justify-between text-slate-400">
+                                <span>Items Facturados:</span>
+                                <span class="font-bold text-slate-200">{{ totalItems }} u.</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>Subtotal Base:</span>
+                                <span>$ {{ financialTotals.subtotal.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                            </div>
+                            <div class="flex justify-between text-amber-400">
+                                <span>Descuentos:</span>
+                                <span>- $ {{ financialTotals.discounts.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                            </div>
+                            <div class="flex justify-between text-slate-300">
+                                <span>Impuestos (IVA):</span>
+                                <span>+ $ {{ financialTotals.taxes.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                            </div>
+
+                            <div class="flex justify-between text-base font-black text-emerald-400 pt-2 border-t border-slate-800">
+                                <span>TOTAL NETO:</span>
+                                <span>$ {{ financialTotals.total.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                            </div>
+
+                            <div v-if="saleType !== 'CONTADO'" class="flex justify-between text-xs font-black text-rose-400 pt-1 border-t border-dashed border-slate-800">
+                                <span>SALDO PENDIENTE:</span>
+                                <span>$ {{ Math.round(dueAmount).toLocaleString('es-CO') }}</span>
+                            </div>
+                        </div>
+
+                        <div class="space-y-3">
+                            <div>
+                                <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Método de Pago</label>
+                                <div class="grid grid-cols-2 gap-1.5">
+                                    <button v-for="method in ['EFECTIVO', 'TRANSFERENCIA', 'TARJETA_DEBITO', 'TARJETA_CREDITO']" :key="method" @click="paymentMethod = method" class="p-2 rounded-xl border text-[10px] font-extrabold transition-all text-center" :class="paymentMethod === method ? 'bg-slate-900 text-white border-transparent' : 'bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100'">
+                                        {{ method.replace('_', ' ') }}
+                                    </button>
                                 </div>
                             </div>
 
-                            <div v-else class="bg-slate-50 p-3 rounded-xl border border-slate-200">
+                            <div class="bg-emerald-50/50 p-3 rounded-xl border border-emerald-200 space-y-2">
+                                <div class="flex justify-between items-center gap-2">
+                                    <label class="text-xs font-bold text-emerald-900">
+                                        {{ saleType === 'CONTADO' ? 'Efectivo Recibido:' : 'Abono Inicial ($):' }}
+                                    </label>
+                                    <input v-model.number="receivedAmount" type="number" min="0" class="w-32 p-1.5 text-xs text-right font-bold text-emerald-900 border-emerald-300 rounded-lg focus:ring-emerald-500 bg-white" />
+                                </div>
+
+                                <div v-if="saleType === 'CONTADO' && paymentMethod === 'EFECTIVO'" class="flex justify-between items-center pt-2 border-t border-emerald-200/50">
+                                    <span class="text-xs font-bold text-emerald-800">Cambio / Vueltos:</span>
+                                    <span class="text-base font-black text-emerald-600 font-mono">$ {{ changeAmount.toLocaleString('es-CO', {maximumFractionDigits:0}) }}</span>
+                                </div>
+                            </div>
+
+                            <div v-if="paymentMethod !== 'EFECTIVO'" class="bg-slate-50 p-2.5 rounded-xl border border-slate-200">
                                 <label class="text-[10px] font-bold text-slate-400 uppercase tracking-wide block mb-1">Referencia / No. Váucher Datáfono</label>
                                 <input v-model="transactionReference" type="text" placeholder="Ej: APROBADO 8832" class="w-full p-2 text-xs font-mono border-slate-200 rounded-lg bg-white" />
                             </div>
                         </div>
 
-                        <button @click="submitSale" class="w-full text-center py-4 rounded-2xl text-white font-black text-sm tracking-wide shadow-md transition-all active:scale-95 mt-2" :style="{ backgroundColor: tenant.primary_color }">
+                        <button
+                            @click="submitSale"
+                            :disabled="saleType !== 'CONTADO' && isGenericCustomer"
+                            class="w-full text-center py-4 rounded-2xl text-white font-black text-sm tracking-wide shadow-md transition-all active:scale-95 disabled:bg-slate-300 disabled:cursor-not-allowed"
+                            :style="{ backgroundColor: (saleType !== 'CONTADO' && isGenericCustomer) ? '#cbd5e1' : tenant.primary_color }"
+                        >
                             🟢 PROCESAR E IMPRIMIR FACTURA (POS)
                         </button>
                     </div>
@@ -457,7 +545,6 @@ const selectCustomer = (customer) => {
             </div>
         </div>
 
-        <!-- MODAL REGISTRO RÁPIDO DE CLIENTES -->
         <div v-if="showCustomerModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
             <div class="bg-white p-6 rounded-2xl border border-slate-200 max-w-lg w-full shadow-2xl space-y-4">
                 <div class="flex justify-between items-center border-b border-slate-100 pb-3">
@@ -505,9 +592,6 @@ const selectCustomer = (customer) => {
             </div>
         </div>
 
-        <!-- ================================================================= -->
-        <!-- PLANILLA DE INTERCEPCIÓN EXCLUSIVA DE IMPRESIÓN NATIVA (BROWSER)  -->
-        <!-- ================================================================= -->
         <div id="thermal-invoice" :style="{ width: configTenant.pos_ticket_width }" class="print-only font-mono text-[10px] leading-tight text-black p-1">
             <div class="text-center mb-2">
                 <h2 class="text-xs font-black uppercase">{{ tenant.company_name }}</h2>
@@ -517,6 +601,7 @@ const selectCustomer = (customer) => {
             <div class="border-b border-dashed border-black my-2"></div>
             <div class="space-y-0.5">
                 <p><strong>Nro Factura:</strong> {{ nextInvoice }}</p>
+                <p><strong>Tipo Venta:</strong> {{ saleType }}</p>
                 <p><strong>Fecha:</strong> {{ new Date().toLocaleDateString('es-CO') }}</p>
                 <p><strong>Cliente:</strong> {{ selectedCustomer.company_name || `${selectedCustomer.first_name} ${selectedCustomer.last_name}` }}</p>
                 <p><strong>Doc:</strong> {{ selectedCustomer.document_number }}</p>
@@ -542,6 +627,10 @@ const selectCustomer = (customer) => {
                 <p>Descuentos: - $ {{ Math.round(financialTotals.discounts).toLocaleString('es-CO') }}</p>
                 <p>Impuestos (IVA): + $ {{ Math.round(financialTotals.taxes).toLocaleString('es-CO') }}</p>
                 <p class="text-xs font-black pt-1">TOTAL NETO: $ {{ Math.round(financialTotals.total).toLocaleString('es-CO') }}</p>
+                <template v-if="saleType !== 'CONTADO'">
+                    <p>Abono Inicial: $ {{ Math.round(receivedAmount).toLocaleString('es-CO') }}</p>
+                    <p class="font-bold">SALDO PENDIENTE: $ {{ Math.round(dueAmount).toLocaleString('es-CO') }}</p>
+                </template>
             </div>
             <div class="text-center mt-4 pt-1 border-t border-dashed border-black text-[9px]">
                 <p class="font-bold">¡Gracias por su compra!</p>
@@ -552,7 +641,6 @@ const selectCustomer = (customer) => {
 </template>
 
 <style scoped>
-/* REGLAS BASE DE CONVIVENCIA PANTALLA VS IMPRESIÓN */
 .print-only {
     display: none;
 }
