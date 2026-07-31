@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contact;
+use App\Models\Tenant\AccountReceivable;
 use App\Models\Tenant\DianResolution;
 use App\Models\Tenant\KardexMovement;
 use App\Models\Tenant\Product;
@@ -11,9 +12,9 @@ use App\Models\Tenant\Sale;
 use App\Models\Tenant\SaleDetail;
 use App\Models\Tenant\SalePayment;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Auth;
 use Inertia\Inertia;
 
 class SalesPosController extends Controller
@@ -99,259 +100,6 @@ class SalesPosController extends Controller
         ]);
     }
 
-    /**
-     * 4. PROCESAR LA VENTA (La operación del negocio).
-     *
-    */
-    /* public function store(Request $request)
-    {
-        $validated = $request->validate([
-            'customer_id' => ['required', 'exists:contacts,id'],
-            'sale_type' => ['required', 'in:CONTADO,SEPARE,CREDITO'],
-            'items' => ['required', 'array', 'min:1'],
-            'items.*.id' => ['required', 'exists:products,id'],
-            'items.*.qty' => ['required', 'integer', 'min:1'],
-            'items.*.discount_p' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            'payments' => ['required', 'array', 'min:1'],
-            'payments.*.method' => ['required', 'in:EFECTIVO,TRANSFERENCIA,TARJETA_DEBITO,TARJETA_CREDITO'],
-            'payments.*.amount' => ['required', 'numeric', 'min:0'],
-            'payments.*.received_amount' => ['nullable', 'numeric', 'min:0'],
-            'payments.*.reference' => ['nullable', 'string', 'max:100'],
-        ]);
-
-        return DB::transaction(function () use ($request, $validated) {
-
-            // A. Validar y bloquear la resolución DIAN para evitar colisiones de numeración
-            $resolution = DianResolution::where('is_active', true)
-                ->lockForUpdate()
-                ->first();
-
-            if (!$resolution || $resolution->current_number >= $resolution->to_number) {
-                return redirect()->back()->withErrors(['error' => 'No hay una resolución DIAN activa o se han agotado los consecutivos.']);
-            }
-
-            // Incrementar consecutivo
-            $resolution->current_number += 1;
-            $resolution->save();
-
-            $invoiceNumber = ($resolution->prefix ? $resolution->prefix . '-' : '') . $resolution->current_number;
-
-            // Totales de la cabecera
-            $subtotalGlobal = 0;
-            $discountGlobal = 0;
-            $taxGlobal = 0;
-
-            // B. Procesar temporalmente los items para calcular totales puros del servidor
-            $processedItems = [];
-            foreach ($request->items as $item) {
-                $product = Product::findOrFail($item['id']);
-                $qty = $item['qty'];
-                $discPercent = $item['discount_p'];
-
-                // Cálculos Financieros bajo esquema de la migración
-                $price = $product->price_excluding_tax; // Base gravable
-                $subtotalItemRaw = $price * $qty;
-
-                $discAmount = $subtotalItemRaw * ($discPercent / 100);
-                $subtotalConDescuento = $subtotalItemRaw - $discAmount;
-
-                $taxAmount = $subtotalConDescuento * ($product->tax_rate / 100);
-                $subtotalFinalItem = $subtotalConDescuento + $taxAmount;
-
-                // Acumuladores globales
-                $subtotalGlobal += $subtotalItemRaw;
-                $discountGlobal += $discAmount;
-                $taxGlobal += $taxAmount;
-
-                $processedItems[] = [
-                    'product_id' => $product->id,
-                    'product_model' => $product,
-                    'quantity' => $qty,
-                    'price' => $price,
-                    'discount_percentage' => $discPercent,
-                    'discount_amount' => $discAmount,
-                    'tax_percentage' => $product->tax_rate,
-                    'tax_amount' => $taxAmount,
-                    'subtotal' => $subtotalFinalItem
-                ];
-            }
-
-            $totalGlobal = ($subtotalGlobal - $discountGlobal) + $taxGlobal;
-
-            // C. Crear la Cabecera de la Venta (Sales)
-            $sale = Sale::create([
-                'dian_resolution_id' => $resolution->id,
-                'invoice_number'     => $invoiceNumber,
-                'customer_id'        => $request->customer_id,
-                'user_id'            => $request->user()->id, // Captura el usuario que vende
-                'subtotal'           => $subtotalGlobal,
-                'discount_total'     => $discountGlobal,
-                'tax_total'          => $taxGlobal,
-                'total'              => $totalGlobal,
-                'payment_status'     => 'PAGADA'
-            ]);
-
-            // D. Guardar detalles de venta y afectar inventario/Kardex
-            foreach ($processedItems as $pItem) {
-                SaleDetail::create([
-                    'sale_id'             => $sale->id,
-                    'product_id'          => $pItem['product_id'],
-                    'quantity'            => $pItem['quantity'],
-                    'price'               => $pItem['price'],
-                    'discount_percentage' => $pItem['discount_percentage'],
-                    'discount_amount'     => $pItem['discount_amount'],
-                    'tax_percentage'      => $pItem['tax_percentage'],
-                    'tax_amount'          => $pItem['tax_amount'],
-                    'subtotal'            => $pItem['subtotal'],
-                ]);
-
-                $product = $pItem['product_model'];
-
-                // Descontar Stock si el producto lo requiere
-                if ($product->manage_stock) {
-                    $oldStock = $product->stock;
-                    $product->decrement('stock', $pItem['quantity']);
-                    $newStock = $product->stock;
-
-                    // 📊 Registrar movimiento en el Kardex (Polimórfico con sales)
-                    KardexMovement::create([
-                        'product_id'         => $product->id,
-                        'movable_type'       => Sale::class,
-                        'movable_id'         => $sale->id,
-                        'type'               => 'SALIDA',
-                        'concept'            => 'VENTA',
-                        'quantity'           => $pItem['quantity'],
-                        'price_unit'         => $pItem['price'],
-                        'total'              => $pItem['subtotal'],
-                        'balance_quantity'   => $newStock,
-                        'balance_price_unit' => $product->average_cost,
-                        'balance_total'      => $newStock * $product->average_cost,
-                    ]);
-                }
-            }
-
-            // E. Guardar Métodos de Pago Mixtos (SalePayments)
-            foreach ($request->payments as $payment) {
-                // Cálculo de vuelto para efectivo
-                $received = $payment['received_amount'] ?? $payment['amount'];
-                $change = $received - $payment['amount'];
-
-                SalePayment::create([
-                    'sale_id'               => $sale->id,
-                    'payment_method'        => $payment['method'],
-                    'amount'                => $payment['amount'],
-                    'received_amount'       => $received,
-                    'change_amount'         => $change > 0 ? $change : 0,
-                    'transaction_reference' => $payment['reference'] ?? null, // Voucher del datáfono o Nequi
-                ]);
-            }
-
-            // MODIFICACIÓN AQUÍ: Responder directamente en formato JSON
-            return response()->json([
-                'success' => true,
-                'message' => "Factura {$invoiceNumber} procesada correctamente.",
-                'invoice_number' => $invoiceNumber,
-                'sale_id' => $sale->id
-            ]);
-        });
-    } */
-
-/*
-    public function store(Request $request)
-    {
-        // 1. Validar los datos de la venta
-        $validated = $request->validate([
-            'customer_id'    => 'required|exists:contacts,id',
-            'payment_status' => 'required|in:PAGADA,PENDIENTE,SEPARE',
-            'cart'           => 'required|array|min:1',
-            'cart.*.id'      => 'required|exists:products,id',
-            'cart.*.qty'     => 'required|numeric|min:0.01',
-            'payments'       => 'required|array|min:1',
-        ]);
-
-        // 2. Obtener resolución activa de la DIAN
-        $resolution = DianResolution::where('is_active', true)
-            ->where('current_number', '<', DB::raw('to_number'))
-            ->where('date_to', '>=', now()->toDateString())
-            ->first();
-
-        if (!$resolution) {
-            return back()->withErrors(['resolution' => 'No hay una resolución DIAN activa o se han agotado los números.']);
-        }
-
-        // 3. Ejecutar la transacción
-        DB::transaction(function () use ($request, $resolution, &$sale) {
-            // Incrementar el consecutivo
-            $resolution->increment('current_number');
-            $invoiceNumber = ($resolution->prefix ? $resolution->prefix . '-' : '') . $resolution->current_number;
-
-            // Crear la cabecera de la venta
-            $sale = Sale::create([
-                'dian_resolution_id' => $resolution->id,
-                'invoice_number'     => $invoiceNumber,
-                'customer_id'        => $request->customer_id,
-                'user_id'            => Auth::id() ?? 1,
-                'subtotal'           => $request->subtotal,
-                'discount_total'     => $request->discount_total ?? 0,
-                'tax_total'          => $request->tax_total ?? 0,
-                'total'              => $request->total,
-                'payment_status'     => $request->payment_status,
-            ]);
-
-            // Crear detalles de productos y movimientos de Kardex
-            foreach ($request->cart as $item) {
-                SaleDetail::create([
-                    'sale_id'             => $sale->id,
-                    'product_id'          => $item['id'],
-                    'quantity'            => $item['qty'],
-                    'price'               => $item['price_excluding_tax'],
-                    'discount_percentage' => $item['discount_p'] ?? 0,
-                    'discount_amount'     => $item['discount_amount'] ?? 0,
-                    'tax_percentage'      => $item['tax_rate'] ?? 0,
-                    'tax_amount'          => $item['tax_amount'] ?? 0,
-                    'subtotal'            => $item['subtotal'] ?? ($item['price_excluding_tax'] * $item['qty']),
-                ]);
-
-                // Actualizar stock e inventario Kardex
-                $product = Product::findOrFail($item['id']);
-                $newStock = $product->stock - $item['qty'];
-
-                KardexMovement::create([
-                    'product_id'         => $product->id,
-                    'movable_type'       => Sale::class,
-                    'movable_id'         => $sale->id,
-                    'type'               => 'SALIDA',
-                    'concept'            => 'VENTA POS',
-                    'quantity'           => $item['qty'],
-                    'price_unit'         => $product->cost_price ?? $item['price_excluding_tax'],
-                    'total'              => $item['qty'] * ($product->cost_price ?? $item['price_excluding_tax']),
-                    'balance_quantity'   => $newStock,
-                    'balance_price_unit' => $product->cost_price ?? 0,
-                    'balance_total'      => $newStock * ($product->cost_price ?? 0),
-                ]);
-
-                $product->update(['stock' => $newStock]);
-            }
-
-            // Registrar pagos
-            foreach ($request->payments as $payment) {
-                SalePayment::create([
-                    'sale_id'                => $sale->id,
-                    'payment_method'         => $payment['method'],
-                    'amount'                 => $payment['amount'],
-                    'received_amount'        => $payment['received'] ?? $payment['amount'],
-                    'change_amount'          => $payment['change'] ?? 0,
-                    'transaction_reference' => $payment['reference'] ?? null,
-                ]);
-            }
-        });
-
-        return redirect()->back()->with('success', 'Venta realizada con éxito');
-    } */
-    /**
-     * 4. PROCESAR LA VENTA (La operación del negocio).
-     * Soporta CONTADO, CREDITO y SEPARE.
-     */
     public function store(Request $request)
     {
         $validated = $request->validate([
@@ -461,6 +209,11 @@ class SalesPosController extends Controller
 
             // CREDITO no exige mínimo: puede llegar con $0 de abono.
 
+            $paymentStatus = match (true) {
+                $paidAmount >= $totalGlobal => 'PAGADA',       // Se pagó todo, sea CONTADO, CREDITO o SEPARE
+                $request->sale_type === 'SEPARE' => 'SEPARE',  // Separe con saldo pendiente
+                default => 'PENDIENTE',                        // Crédito con saldo pendiente
+            };
             $paymentStatus = match ($request->sale_type) {
                 'CONTADO' => 'PAGADA',
                 'SEPARE'  => 'SEPARE',
@@ -534,6 +287,20 @@ class SalesPosController extends Controller
                     'received_amount'       => $received,
                     'change_amount'         => $change,
                     'transaction_reference' => $payment['reference'] ?? null,
+                ]);
+            }
+
+            // G. Generar Cuenta por Cobrar si la venta queda con saldo pendiente
+            $pendingBalance = $totalGlobal - $paidAmount;
+
+            if (in_array($request->sale_type, ['CREDITO', 'SEPARE']) && $pendingBalance > 0) {
+                AccountReceivable::create([
+                    'sale_id'         => $sale->id,
+                    'customer_id'     => $sale->customer_id,
+                    'original_amount' => $totalGlobal,
+                    'balance'         => $pendingBalance,
+                    'due_date'        => now()->addDays($request->sale_type === 'SEPARE' ? 15 : 30),
+                    'status'          => 'PENDIENTE',
                 ]);
             }
 

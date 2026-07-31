@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\Admin\EmpresaController;
+use App\Http\Controllers\Tenant\AccountReceivableController;
 use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
 use App\Http\Controllers\Tenant\DianResolutionController;
@@ -10,7 +11,9 @@ use App\Http\Controllers\Tenant\PurchaseInvoiceController;
 use App\Http\Controllers\Tenant\SalesPosController;
 use App\Http\Controllers\Tenant\TenantAuthController;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
+
 
 /*
 |--------------------------------------------------------------------------
@@ -75,10 +78,44 @@ Route::group([
         Route::get('/sales/pos/search-customers', [SalesPosController::class, 'searchCustomers'])->name('sales.pos.search-customers');
         Route::get('/sales/pos/search-products', [SalesPosController::class, 'searchProducts'])->name('sales.pos.search-products');
 
+        // Rutas para la gestión de cuentas por cobrar
+        Route::get('/accounts-receivable', [AccountReceivableController::class, 'index'])->name('accounts-receivable.index');
+        Route::get('/accounts-receivable/{accountId}', [AccountReceivableController::class, 'show'])->name('accounts-receivable.show');
+        Route::post('/accounts-receivable/{accountId}/payment', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.payment');
+        Route::post('/accounts-receivable/{accountId}/payments', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.apply-payment');
+
+        // Ruta de prueba para verificar que el POST funciona
+        Route::post('/test-payment/{id}', function ($id) {
+            return response()->json(['success' => true, 'id' => $id]);
+        });
+
         /* Exportación de datos */
         Route::post('/export/preferences', [ExportController::class, 'savePreferences'])->name('export.preferences');
         Route::post('/export/download', [ExportController::class, 'export'])->name('export.download');
+
+
+    // Fallback temporal para depuración de 404 en el subdominio del tenant.
+    // Registra en storage/logs/laravel.log información útil sobre la petición.
+    Route::fallback(function () {
+        $req = request();
+        Log::warning('Fallback (tenant) - unmatched request', [
+            'method' => $req->method(),
+            'url' => $req->fullUrl(),
+            'path' => $req->path(),
+            'host' => $req->getHost(),
+            'headers' => $req->headers->all(),
+            'is_ajax' => $req->ajax(),
+            'expects_json' => $req->expectsJson(),
+        ]);
+
+        if ($req->expectsJson() || $req->ajax()) {
+            return response()->json(['message' => 'Not Found (logged)'], 404);
+        }
+
+        abort(404);
     });
+
+        });
 });
 
 /*

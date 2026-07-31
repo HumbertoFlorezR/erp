@@ -58,4 +58,9 @@ class Sale extends Model
     {
         return $this->morphMany(KardexMovement::class, 'movable');
     }
+
+    public function accountReceivable()
+    {
+        return $this->hasOne(AccountReceivable::class);
+    }
 }

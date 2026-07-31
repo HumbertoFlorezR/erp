@@ -14,7 +14,9 @@ return Application::configure(basePath: dirname(__DIR__))
     ->withMiddleware(function (Middleware $middleware) {
 
         // 1. Mantenemos el CSRF activo de forma normal para el login
-        $middleware->validateCsrfTokens(except: []);
+        $middleware->validateCsrfTokens(except: [
+            'export/download',
+        ]);
 
         // 2. Inyectamos de forma limpia el TenantMiddleware en el grupo Web de Laravel 13
         $middleware->web(append: [
@@ -29,6 +31,7 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\View\Middleware\ShareErrorsFromSession::class,
             \Illuminate\Foundation\Http\Middleware\VerifyCsrfToken::class,
             \App\Http\Middleware\TenantMiddleware::class,       // <-- Luego conmutamos la base de datos
+            \Illuminate\Routing\Middleware\SubstituteBindings::class, // <-- IMPORTANTE: Después del Tenant
             \Illuminate\Auth\Middleware\Authenticate::class,    // <-- Por último actúa la protección 'auth'
         ]);
 
@@ -47,12 +50,6 @@ return Application::configure(basePath: dirname(__DIR__))
 
             return route('login');
         });
-    })
-    // Si es Laravel 11 en bootstrap/app.php:
-    ->withMiddleware(function (Middleware $middleware) {
-        $middleware->validateCsrfTokens(except: [
-            'export/download',
-        ]);
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         $exceptions->shouldRenderJsonWhen(

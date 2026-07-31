@@ -10,32 +10,25 @@ const user = computed(() => page.props.auth?.user || { name: 'Usuario', role: 'a
 // Control del estado del menú lateral
 const isSidebarOpen = ref(true);
 
-// Datos de prueba simulados (Estos vendrán desde el DashboardController)
-const stats = ref({
-    total_sales: 12450000,
-    cash_balance: 3200000,
-    accounts_receivable: 4500000,
-    low_stock_count: 3
+const stats = computed(() => page.props.stats || {
+    total_sales: 0,
+    cash_balance: 0,
+    accounts_receivable: 0,
+    low_stock_count: 0
 });
 
-// ⏳ Cartera por Cobrar (Clientes)
-const accountsReceivableList = ref([
-    { id: 1, number: 'V-1001', client: 'Distribuidora Alianza', total: 450000, due_date: '12/07/2026' },
-    { id: 2, number: 'V-1002', client: 'Juan Pérez', total: 120000, due_date: '15/07/2026' }
-]);
+const accountsReceivableList = computed(() => page.props.accountsReceivableList || []);
+const accountsPayableList = computed(() => page.props.accountsPayableList || []);
+const lowStockProducts = computed(() => page.props.lowStockProducts || []);
 
-// 💸 Cartera por Pagar (Proveedores) - ¡NUEVO!
-const accountsPayableList = ref([
-    { id: 1, number: 'F-9982', provider: 'Colanta S.A.S.', total: 1850000, due_date: '10/07/2026' },
-    { id: 2, number: 'F-4431', provider: 'Fruver Central', total: 340000, due_date: '14/07/2026' }
-]);
-
-// 📦 Productos en Stock Crítico - ¡NUEVO!
-const lowStockProducts = ref([
-    { id: 1, name: 'Aceite de Girasol 1L', sku: 'REF-0021', current_stock: 2, min_stock: 10 },
-    { id: 2, name: 'Arroz Integral 1Kg', sku: 'REF-0089', current_stock: 4, min_stock: 15 },
-    { id: 3, name: 'Leche Entera Pac x6', sku: 'REF-0102', current_stock: 1, min_stock: 5 }
-]);
+const formatCurrency = (value) => {
+    const number = Number(value ?? 0);
+    return number.toLocaleString('es-CO', {
+        style: 'currency',
+        currency: 'COP',
+        minimumFractionDigits: 0,
+    });
+};
 </script>
 
 <template>
@@ -77,7 +70,7 @@ const lowStockProducts = ref([
                         <span>📥</span> <span v-if="isSidebarOpen">Gastos</span>
                     </Link>
 
-                    <Link href="/sales" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                    <Link href="/sales/pos" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
                         <span>📤</span> <span v-if="isSidebarOpen">Ventas / POS</span>
                     </Link>
 
@@ -129,7 +122,7 @@ const lowStockProducts = ref([
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
                         <div>
                             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Ventas del Mes</p>
-                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.total_sales.toLocaleString('es-CO') }}</h3>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">{{ formatCurrency(stats.total_sales) }}</h3>
                         </div>
                         <span class="text-2xl bg-emerald-50 p-3 rounded-xl">📈</span>
                     </div>
@@ -137,7 +130,7 @@ const lowStockProducts = ref([
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
                         <div>
                             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Efectivo en Caja</p>
-                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.cash_balance.toLocaleString('es-CO') }}</h3>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">{{ formatCurrency(stats.cash_balance) }}</h3>
                         </div>
                         <span class="text-2xl bg-blue-50 p-3 rounded-xl">💵</span>
                     </div>
@@ -145,7 +138,7 @@ const lowStockProducts = ref([
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
                         <div>
                             <p class="text-xs font-bold text-slate-400 uppercase tracking-wider">Cartera por Cobrar</p>
-                            <h3 class="text-xl font-black text-slate-800 mt-1">$ {{ stats.accounts_receivable.toLocaleString('es-CO') }}</h3>
+                            <h3 class="text-xl font-black text-slate-800 mt-1">{{ formatCurrency(stats.accounts_receivable) }}</h3>
                         </div>
                         <span class="text-2xl bg-amber-50 p-3 rounded-xl">⏳</span>
                     </div>
@@ -179,7 +172,7 @@ const lowStockProducts = ref([
                                     <tr v-for="item in accountsReceivableList" :key="item.id" class="hover:bg-slate-50">
                                         <td class="p-2.5 font-bold font-mono text-slate-700">{{ item.number }}</td>
                                         <td class="p-2.5 font-medium truncate max-w-[120px]">{{ item.client }}</td>
-                                        <td class="p-2.5 text-right font-extrabold text-slate-900">$ {{ item.total.toLocaleString('es-CO') }}</td>
+                                        <td class="p-2.5 text-right font-extrabold text-slate-900">{{ formatCurrency(item.total) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
@@ -204,7 +197,7 @@ const lowStockProducts = ref([
                                     <tr v-for="item in accountsPayableList" :key="item.id" class="hover:bg-slate-50">
                                         <td class="p-2.5 font-bold font-mono text-slate-700">{{ item.number }}</td>
                                         <td class="p-2.5 font-medium truncate max-w-[120px]">{{ item.provider }}</td>
-                                        <td class="p-2.5 text-right font-extrabold text-rose-600">$ {{ item.total.toLocaleString('es-CO') }}</td>
+                                        <td class="p-2.5 text-right font-extrabold text-rose-600">{{ formatCurrency(item.total) }}</td>
                                     </tr>
                                 </tbody>
                             </table>
