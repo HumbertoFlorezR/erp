@@ -1,8 +1,24 @@
 <script setup>
 import { ref, computed } from 'vue';
 import { Head, Link, usePage } from '@inertiajs/vue3';
+import axios from 'axios';
 
-// Captura de datos del sistema (Tenant para diseño y Auth para roles)
+// Componentes de Chart.js
+import { Chart as ChartJS, Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement, ArcElement } from 'chart.js';
+import { Bar, Line, Pie } from 'vue-chartjs';
+import ExpensesSummaryCard from '@/Components/ExpensesSummaryCard.vue';
+
+const props = defineProps({
+    stats: Object,
+    accountsReceivableList: Array,
+    accountsPayableList: Array,
+    lowStockProducts: Array,
+    expensesSummary: Object // 👈 nueva
+});
+
+ChartJS.register(Title, Tooltip, Legend, BarElement, CategoryScale, LinearScale, PointElement, LineElement, ArcElement);
+
+// Captura de datos del sistema
 const page = usePage();
 const tenant = computed(() => page.props.tenant || { company_name: 'ERP GLOBAL', primary_color: '#0f172a' });
 const user = computed(() => page.props.auth?.user || { name: 'Usuario', role: 'admin' });
@@ -29,6 +45,48 @@ const formatCurrency = (value) => {
         minimumFractionDigits: 0,
     });
 };
+
+// --- ESTADOS PARA EL PROMPT AI Y RESULTADOS ---
+const aiPrompt = ref('');
+const isAiLoading = ref(false);
+const aiError = ref(null);
+const aiResult = ref(null); // Contendrá: { columns: [], rows: [], chart: { type, labels, data, title } }
+
+const askAi = async () => {
+    if (!aiPrompt.value.trim() || isAiLoading.value) return;
+
+    isAiLoading.value = true;
+    aiError.value = null;
+
+    try {
+        const response = await axios.post('/admin/ai-query', {
+            prompt: aiPrompt.value
+        });
+        aiResult.value = response.data;
+    } catch (err) {
+        aiError.value = err.response?.data?.message || 'Error al procesar la consulta. Intenta ser más específico.';
+    } finally {
+        isAiLoading.value = false;
+    }
+};
+
+const chartData = computed(() => {
+    if (!aiResult.value?.chart) return null;
+    return {
+        labels: aiResult.value.chart.labels,
+        datasets: [{
+            label: aiResult.value.chart.title || 'Resultados',
+            backgroundColor: tenant.value.primary_color || '#3b82f6',
+            borderColor: tenant.value.primary_color || '#1d4ed8',
+            data: aiResult.value.chart.data
+        }]
+    };
+});
+
+const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false
+};
 </script>
 
 <template>
@@ -36,6 +94,7 @@ const formatCurrency = (value) => {
 
     <div class="min-h-screen bg-slate-100 font-sans flex">
 
+        <!-- Sidebar (conservado intacto) -->
         <aside
             class="bg-slate-900 text-slate-300 w-64 min-h-screen transition-all duration-300 flex flex-col justify-between shrink-0"
             :class="isSidebarOpen ? 'translate-x-0 block' : '-translate-x-full hidden md:block md:w-20'"
@@ -63,15 +122,15 @@ const formatCurrency = (value) => {
                     </Link>
 
                     <Link v-if="user.role === 'admin'" href="/purchase-invoices" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
-                        <span>📥</span> <span v-if="isSidebarOpen">Compras</span>
+                        <span>🛍️</span> <span v-if="isSidebarOpen">Compras</span>
                     </Link>
 
-                    <Link v-if="user.role === 'admin'" href="/" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
-                        <span>📥</span> <span v-if="isSidebarOpen">Gastos</span>
+                    <Link v-if="user.role === 'admin'" href="/expenses" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
+                        <span>🧾</span> <span v-if="isSidebarOpen">Gastos</span>
                     </Link>
 
                     <Link href="/sales/pos" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
-                        <span>📤</span> <span v-if="isSidebarOpen">Ventas / POS</span>
+                        <span>🛍️</span> <span v-if="isSidebarOpen">Ventas / POS</span>
                     </Link>
 
                     <Link v-if="user.role === 'admin'" href="/cash-flow" class="flex items-center gap-3 px-4 py-2.5 rounded-xl hover:bg-slate-800 hover:text-white font-medium text-sm transition-colors text-slate-400">
@@ -80,23 +139,18 @@ const formatCurrency = (value) => {
                 </nav>
             </div>
 
-            <!-- Información del Usuario en la Base del Menú (Optimizado) -->
             <div class="p-4 bg-slate-700 border-t border-slate-800 flex items-center justify-between gap-2">
                 <div class="truncate flex flex-col gap-1">
-                    <!-- Nombre del usuario con mayor peso -->
                     <p class="font-bold text-slate-100 text-sm truncate select-none">
                         {{ user.name }}
                     </p>
-                    <!-- Badge del Rol con alto contraste y visibilidad -->
                     <div class="flex">
                         <span class="px-2 py-0.5 rounded-md text-[10px] font-black tracking-wider uppercase bg-slate-800 text-emerald-400 border border-emerald-500/30 shadow-sm">
                             🛡️ {{ user.role }}
                         </span>
                     </div>
                 </div>
-                <!-- Botón de salida limpio -->
                 <Link href="/logout" method="post" as="button" class="text-slate-500 hover:text-rose-400 font-bold text-lg p-1.5 hover:bg-slate-900 rounded-lg transition-colors shrink-0" title="Cerrar Sesión">
-                    <!-- Icono o emoji de salida -->
                     🚪
                 </Link>
             </div>
@@ -118,6 +172,81 @@ const formatCurrency = (value) => {
 
             <main class="p-6 space-y-6 overflow-y-auto flex-1">
 
+                <!-- 🤖 NUEVO: SECCIÓN PROMPT ASISTENTE INTELIGENTE (EXCLUSIVO ADMIN) -->
+                <div v-if="user.role === 'admix'" class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-4">
+                    <div class="flex items-center gap-2">
+                        <span class="text-xl">🤖</span>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm">Asistente de Consultas IA</h3>
+                            <p class="text-xs text-slate-400">Pide información sobre tus datos (Ej: "Muestra los 5 productos más vendidos este mes", "Ventas agregadas por vendedor")</p>
+                        </div>
+                    </div>
+
+                    <form @submit.prevent="askAi" class="flex gap-2">
+                        <input
+                            v-model="aiPrompt"
+                            type="text"
+                            placeholder="Ej: Mostrar los productos con stock menor a 10 y su categoría..."
+                            class="flex-1 text-xs border border-slate-200 rounded-xl px-4 py-2.5 focus:outline-none focus:border-slate-800 text-slate-700"
+                            :disabled="isAiLoading"
+                        />
+                        <button
+                            type="submit"
+                            :disabled="isAiLoading || !aiPrompt.trim()"
+                            class="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-slate-900 hover:bg-slate-800 disabled:opacity-50 transition-all flex items-center gap-2"
+                        >
+                            <span v-if="isAiLoading" class="animate-spin">🌀</span>
+                            <span>{{ isAiLoading ? 'Consultando...' : 'Consultar' }}</span>
+                        </button>
+                    </form>
+
+                    <div v-if="aiError" class="p-3 bg-rose-50 border border-rose-200 text-rose-700 rounded-xl text-xs">
+                        ⚠️ {{ aiError }}
+                    </div>
+
+                    <!-- RESULTADO CONSULTA: TABLA + GRÁFICO -->
+                    <div v-if="aiResult" class="pt-4 border-t border-slate-100 space-y-6">
+                        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+
+                            <!-- TABLA DINÁMICA -->
+                            <div class="space-y-2">
+                                <h4 class="font-bold text-slate-700 text-xs uppercase tracking-wide">📋 Resultado en Datos</h4>
+                                <div class="overflow-x-auto max-h-72 border border-slate-100 rounded-xl">
+                                    <table class="w-full text-left text-xs border-collapse">
+                                        <thead>
+                                            <tr class="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px]">
+                                                <th v-for="col in aiResult.columns" :key="col" class="p-2.5">{{ col }}</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody class="divide-y divide-slate-100 text-slate-600">
+                                            <tr v-for="(row, idx) in aiResult.rows" :key="idx" class="hover:bg-slate-50">
+                                                <td v-for="col in aiResult.columns" :key="col" class="p-2.5">
+                                                    {{ row[col] }}
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <!-- GRÁFICO ESTADÍSTICO -->
+                            <div class="space-y-2">
+                                <h4 class="font-bold text-slate-700 text-xs uppercase tracking-wide">📈 Gráfico Estadístico</h4>
+                                <div class="h-64 border border-slate-100 p-3 rounded-xl bg-slate-50/50 relative">
+                                    <Bar v-if="aiResult.chart?.type === 'bar'" :data="chartData" :options="chartOptions" />
+                                    <Line v-else-if="aiResult.chart?.type === 'line'" :data="chartData" :options="chartOptions" />
+                                    <Pie v-else-if="aiResult.chart?.type === 'pie'" :data="chartData" :options="chartOptions" />
+                                    <div v-else class="h-full flex items-center justify-center text-slate-400 text-xs">
+                                        No hay representación gráfica disponible para este tipo de datos.
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tarjetas de estadísticas generales -->
                 <div v-if="user.role === 'admin'" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex justify-between items-center">
                         <div>
@@ -152,8 +281,10 @@ const formatCurrency = (value) => {
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <ExpensesSummaryCard :summary="expensesSummary" />
 
+                <!-- Tablas informativas (CxC, CxP, Stock) -->
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
                         <div class="flex justify-between items-center mb-3">
                             <h4 class="font-bold text-slate-800 text-xs uppercase tracking-wide">💼 Cuentas Por Cobrar</h4>
@@ -231,7 +362,6 @@ const formatCurrency = (value) => {
                             </table>
                         </div>
                     </div>
-
                 </div>
 
                 <div class="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col sm:flex-row items-center justify-between gap-4">

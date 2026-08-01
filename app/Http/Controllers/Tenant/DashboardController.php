@@ -8,6 +8,7 @@ use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseInvoice;
 use App\Models\Tenant\Sale;
 use App\Models\Tenant\SalePayment;
+use App\Models\Tenant\Expense;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
 use Carbon\Carbon;
@@ -87,6 +88,65 @@ class DashboardController extends Controller
             'accountsReceivableList' => $accountsReceivableList,
             'accountsPayableList' => $accountsPayableList,
             'lowStockProducts' => $lowStockProducts,
+            'expensesSummary' => $this->getExpensesSummary(), // 👈 nueva línea
         ]);
+    }
+    private function getExpensesSummary()
+    {
+        $today = Carbon::now();
+
+        $currentStart  = $today->copy()->startOfMonth();
+        $currentEnd    = $today->copy()->endOfMonth();
+        $previousStart = $today->copy()->subMonthNoOverflow()->startOfMonth();
+        $previousEnd   = $today->copy()->subMonthNoOverflow()->endOfMonth();
+
+        $currentTotal = Expense::where('status', 'ACTIVO')
+            ->whereBetween('expense_date', [$currentStart, $currentEnd])
+            ->sum('amount');
+
+        $previousTotal = Expense::where('status', 'ACTIVO')
+            ->whereBetween('expense_date', [$previousStart, $previousEnd])
+            ->sum('amount');
+
+        $variationPercent = $previousTotal > 0
+            ? round((($currentTotal - $previousTotal) / $previousTotal) * 100, 1)
+            : null; // null = "sin datos del mes anterior para comparar"
+
+        $topCategories = Expense::with('category')
+            ->where('status', 'ACTIVO')
+            ->whereBetween('expense_date', [$currentStart, $currentEnd])
+            ->selectRaw('expense_category_id, SUM(amount) as total')
+            ->groupBy('expense_category_id')
+            ->orderByDesc('total')
+            ->take(5)
+            ->get()
+            ->map(fn ($row) => [
+                'name'  => $row->category?->name ?? 'Sin categoría',
+                'total' => (float) $row->total,
+            ]);
+
+        // Tendencia de los últimos 6 meses (incluyendo el actual)
+        $monthlyTrend = collect(range(5, 0))->map(function ($monthsAgo) {
+            $monthDate  = Carbon::now()->subMonthsNoOverflow($monthsAgo);
+            $monthStart = $monthDate->copy()->startOfMonth();
+            $monthEnd   = $monthDate->copy()->endOfMonth();
+
+            $total = Expense::where('status', 'ACTIVO')
+                ->whereBetween('expense_date', [$monthStart, $monthEnd])
+                ->sum('amount');
+
+            return [
+                'month' => $monthDate->translatedFormat('M'), // "ene", "feb", ...
+                'total' => (float) $total,
+            ];
+        });
+
+        return [
+            'current_month_total'  => (float) $currentTotal,
+            'previous_month_total' => (float) $previousTotal,
+            'variation_percent'    => $variationPercent,
+            'top_categories'       => $topCategories,
+            'monthly_trend'        => $monthlyTrend,
+        ];
     }
 }

@@ -1,6 +1,8 @@
 <?php
 
+use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Admin\EmpresaController;
+use App\Http\Controllers\AiQueryController;
 use App\Http\Controllers\Tenant\AccountReceivableController;
 use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
@@ -10,8 +12,8 @@ use App\Http\Controllers\Tenant\ProductController;
 use App\Http\Controllers\Tenant\PurchaseInvoiceController;
 use App\Http\Controllers\Tenant\SalesPosController;
 use App\Http\Controllers\Tenant\TenantAuthController;
-use Illuminate\Support\Facades\Route;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Route;
 use Inertia\Inertia;
 
 
@@ -84,6 +86,13 @@ Route::group([
         Route::post('/accounts-receivable/{accountId}/payment', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.payment');
         Route::post('/accounts-receivable/{accountId}/payments', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.apply-payment');
 
+        // Módulo de Gastos
+        Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
+        Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+        Route::put('/expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');
+        Route::post('/expenses/{id}/cancel', [ExpenseController::class, 'cancel'])->name('expenses.cancel');
+        Route::post('/expenses/categories', [ExpenseController::class, 'storeQuickCategory'])->name('expenses.categories.store');
+
         // Ruta de prueba para verificar que el POST funciona
         Route::post('/test-payment/{id}', function ($id) {
             return response()->json(['success' => true, 'id' => $id]);
@@ -93,6 +102,10 @@ Route::group([
         Route::post('/export/preferences', [ExportController::class, 'savePreferences'])->name('export.preferences');
         Route::post('/export/download', [ExportController::class, 'export'])->name('export.download');
 
+        // 🤖 RUTA PARA EL ASISTENTE IA (Solo Admin)
+        Route::middleware(['can:admin'])->group(function () {
+            Route::post('/admin/ai-query', [AiQueryController::class, 'processQuery'])->name('admin.ai-query');
+        });
 
     // Fallback temporal para depuración de 404 en el subdominio del tenant.
     // Registra en storage/logs/laravel.log información útil sobre la petición.

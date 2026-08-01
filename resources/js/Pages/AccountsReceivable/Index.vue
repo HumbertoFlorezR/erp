@@ -14,7 +14,8 @@ const props = defineProps({
 
 // Columnas configurables para la exportación
 const receivableColumns = [
-    { key: 'customer', label: 'Cliente' },
+    { key: 'customer.full_name', label: 'Cliente' },
+    { key: 'customer.document_number', label: 'Identificación' },
     { key: 'sale_id', label: 'ID Venta / Factura' },
     { key: 'due_date', label: 'Fecha Vencimiento' },
     { key: 'original_amount', label: 'Monto Original' },

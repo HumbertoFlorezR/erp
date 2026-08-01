@@ -38,6 +38,8 @@ class Contact extends Model
         'is_active'   => 'boolean',
     ];
 
+    protected $appends = ['full_name'];
+
     /**
      * Accesor dinámico para obtener el nombre completo o razón social.
      * Así en Vue solo pintamos 'contact.full_name' sin condicionales allá.
