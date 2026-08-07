@@ -253,7 +253,10 @@ const sendEscPosToLocalAgent = async (invoiceNumber) => {
 };
 
 // --- PROCESAR LA VENTA ---
+const isSubmitting = ref(false);
+
 const submitSale = () => {
+    if (isSubmitting.value) return;
     if (cart.value.length === 0) return alert('El carrito está vacío.');
 
     // Validación cliente para Crédito/Separe
@@ -268,6 +271,8 @@ const submitSale = () => {
     if (saleType.value === 'SEPARE' && receivedAmount.value <= 0) {
         return alert('⚠️ El Plan Separe requiere ingresar un abono inicial.');
     }
+
+    isSubmitting.value = true;
 
     const formPayload = {
         customer_id: selectedCustomer.value.id,
@@ -294,6 +299,7 @@ const submitSale = () => {
             }
         })
         .catch(err => {
+            isSubmitting.value = false;
             const errorMsg = err.response?.data?.message || 'Error al procesar la venta. Verifique la resolución DIAN.';
             alert(errorMsg);
         });
@@ -534,11 +540,11 @@ const submitSale = () => {
 
                         <button
                             @click="submitSale"
-                            :disabled="saleType !== 'CONTADO' && isGenericCustomer"
+                            :disabled="isSubmitting || (saleType !== 'CONTADO' && isGenericCustomer)"
                             class="w-full text-center py-4 rounded-2xl text-white font-black text-sm tracking-wide shadow-md transition-all active:scale-95 disabled:bg-slate-300 disabled:cursor-not-allowed"
                             :style="{ backgroundColor: (saleType !== 'CONTADO' && isGenericCustomer) ? '#cbd5e1' : tenant.primary_color }"
                         >
-                            🟢 PROCESAR E IMPRIMIR FACTURA (POS)
+                            {{ isSubmitting ? 'PROCESANDO...' : '🟢 PROCESAR E IMPRIMIR FACTURA (POS)' }}
                         </button>
                     </div>
                 </div>

@@ -47,6 +47,7 @@ const form = useForm({
     due_date: props.initialData?.due_date || new Date().toISOString().substr(0, 10),
     notes: props.initialData?.notes || '',
     discount: 0.00, // Forzamos un valor base para que el backend no reciba null
+    payment_type: 'CREDITO', // valor por defecto
     items: props.initialData?.items?.map(i => ({
         product_id: i.product_id,
         quantity: parseFloat(i.quantity) || 0,
@@ -90,12 +91,14 @@ const isPerishable = (productId) => {
 const saveQuickProduct = async () => {
     try {
         const response = await axios.post('/products', {
+            type: 'PRODUCTO',   // 👈 nuevo — un producto express desde Compras siempre es tipo PRODUCTO, nunca SERVICIO
             code: quickProductForm.value.code || '',
             name: quickProductForm.value.name,
             tax_rate: parseFloat(quickProductForm.value.tax_rate) || 19,
             tax_type: quickProductForm.value.tax_type || 'GRAVADO',
             manage_stock: quickProductForm.value.controlar_inventario ? 1 : 0,
-            price_excluding_tax: 0 // Requerido por el controlador de productos para la base
+            unit_measure_code: '94',   // 👈 nuevo — "94 = Unidad estándar DIAN", según el comentario de tu propia migración
+            price_excluding_tax: 0
         });
 
         if (response.data && response.data.success) {
@@ -122,6 +125,52 @@ const saveQuickProduct = async () => {
     } catch (error) {
         console.error(error);
         alert('Error al crear el producto express: ' + (error.response?.data?.message || 'Verifique los campos requeridos'));
+    }
+};
+
+// --- GUARDAR PROVEEDOR RÁPIDO (AXIOS) ---
+const saveQuickProvider = async () => {
+    try {
+        const response = await axios.post('/contacts/quick-provider', {
+            company_name:    quickProviderForm.value.company_name,
+            document_number: quickProviderForm.value.document_number,
+            document_type:   quickProviderForm.value.document_type,
+            regime_type:     quickProviderForm.value.regime_type,
+            first_name:      quickProviderForm.value.first_name,
+            last_name:       quickProviderForm.value.last_name,
+        });
+
+        if (response.data && response.data.success) {
+            const c = response.data.contact;
+
+            const mappedProvider = {
+                id: c.id,
+                name: c.company_name || `${quickProviderForm.value.first_name} ${quickProviderForm.value.last_name}`.trim(),
+                nit: c.document_number
+            };
+
+            // Lo inyectamos al catálogo local para que aparezca de inmediato en el select
+            localProviders.value.push(mappedProvider);
+
+            // Lo dejamos ya seleccionado en el formulario principal de la compra
+            form.contact_id = c.id;
+
+            // Cerramos la modal y limpiamos
+            isProviderModalOpen.value = false;
+            quickProviderForm.value = {
+                company_name: '',
+                document_number: '',
+                document_type: 'NIT',
+                regime_type: 'RESPONSABLE_IVA',
+                first_name: '',
+                last_name: ''
+            };
+
+            alert('Proveedor creado e indexado correctamente.');
+        }
+    } catch (error) {
+        console.error(error);
+        alert('Error al crear el proveedor express: ' + (error.response?.data?.message || 'Verifique los campos requeridos'));
     }
 };
 
@@ -234,6 +283,19 @@ const submit = () => {
                         <div>
                             <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Fecha Vencimiento</label>
                             <input type="date" v-model="form.due_date" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:border-transparent transition-all" :style="{ '--tw-ring-color': tenant.primary_color }"/>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-slate-600 uppercase mb-1">Tipo de Pago</label>
+                            <div class="flex gap-3">
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="radio" v-model="form.payment_type" value="CREDITO" />
+                                    Crédito
+                                </label>
+                                <label class="flex items-center gap-2 text-sm">
+                                    <input type="radio" v-model="form.payment_type" value="CONTADO" />
+                                    Contado
+                                </label>
+                            </div>
                         </div>
                     </div>
 

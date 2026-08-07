@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Tenant;
 
 use App\Http\Controllers\Controller;
 use App\Models\Contact;
+use App\Models\Tenant\AccountPayable;
 use App\Models\Tenant\KardexMovement;
 use App\Models\Tenant\Product;
 use App\Models\Tenant\PurchaseInvoice;
@@ -101,6 +102,7 @@ class PurchaseInvoiceController extends Controller
             'invoice_number'          => 'required|string',
             'issue_date'              => 'required|date',
             'due_date'                => 'required|date',
+            'payment_type'            => 'required|in:CONTADO,CREDITO', // 👈 nuevo
             'notes'                   => 'nullable|string',
             'discount'                => 'nullable|numeric|min:0',
             'items'                   => 'required|array|min:1',
@@ -155,9 +157,22 @@ class PurchaseInvoiceController extends Controller
                 'discount'       => $discount,
                 'tax_amount'     => $taxGeneral,
                 'total'          => $totalGeneral,
-                'payment_status' => 'PENDIENTE',
+                'payment_type'   => $validated['payment_type'],                                   // 👈 nuevo
+                'payment_status' => $validated['payment_type'] === 'CONTADO' ? 'PAGADA' : 'PENDIENTE', // 👈 cambiado
                 'notes'          => $validated['notes'] ?? null,
             ]);
+
+            // 👇 NUEVO: solo generamos cuenta por pagar si la compra es a crédito
+            if ($validated['payment_type'] === 'CREDITO') {
+                AccountPayable::create([
+                    'purchase_invoice_id' => $invoice->id,
+                    'provider_id'         => $invoice->contact_id,
+                    'original_amount'     => $totalGeneral,
+                    'balance'             => $totalGeneral,
+                    'due_date'            => $validated['due_date'],
+                    'status'              => 'PENDIENTE',
+                ]);
+            }
 
             // 4. Grabamos los detalles e impactamos el inventario / Kardex
             foreach ($itemsData as $data) {
@@ -166,7 +181,7 @@ class PurchaseInvoiceController extends Controller
 
                 // Buscamos el producto para actualizar Kardex y Stock
                 $product = Product::find($data['product_id']);
-                if ($product) {
+                if ($product && $product->manage_stock) {
                     $stockAnterior = $product->stock ?? 0;
                     $costoAnterior = $product->average_cost ?? 0;
 
@@ -213,9 +228,9 @@ class PurchaseInvoiceController extends Controller
             // Deshacemos cualquier inserción a medias en la base de datos
             DB::rollBack();
 
-            // Lanzamos una excepción de validación para obligar a Inertia a reportarlo como un error estricto
+            Log::error('Error al registrar compra: ' . $e->getMessage());
             throw \Illuminate\Validation\ValidationException::withMessages([
-                'error' => 'Fallo físico en Base de Datos: ' . $e->getMessage() . ' en la línea ' . $e->getLine()
+                'error' => 'No se pudo registrar la compra. Por favor intenta de nuevo.'
             ]);
         }
     }
@@ -268,6 +283,12 @@ class PurchaseInvoiceController extends Controller
                 'payment_status' => 'ANULADA',
                 'notes' => $invoice->notes . " | [ANULADA EL " . now()->format('Y-m-d H:i') . "]"
             ]);
+
+            // 👇 NUEVO: si tenía cuenta por pagar asociada, también se anula
+            $accountPayable = AccountPayable::where('purchase_invoice_id', $invoice->id)->first();
+            if ($accountPayable) {
+                $accountPayable->update(['status' => 'ANULADA']);
+            }
 
             DB::commit();
 

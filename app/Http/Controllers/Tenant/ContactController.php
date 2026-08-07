@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Contact;
 use Illuminate\Http\Request;
 use Inertia\Inertia;
+use Illuminate\Validation\Rule;
 
 class ContactController extends Controller
 {
@@ -99,7 +100,6 @@ class ContactController extends Controller
             'is_client'       => $request->boolean('is_client', false),
             'is_supplier'     => $request->boolean('is_supplier', false),
             'is_employee'     => $request->boolean('is_employee', false),
-            'status'          => 'ACTIVO',
         ]);
 
         return redirect()->route('contacts.index')->with('success', 'Tercero creado con éxito.');
@@ -131,7 +131,7 @@ class ContactController extends Controller
 
         $validated = $request->validate([
             'document_type'   => 'required|string|max:5',
-            'document_number' => 'required|string|max:20',
+            'document_number'    => ['required', 'string', 'max:20', Rule::unique('contacts')->ignore($contact->id)],
             'verification_digit' => 'nullable|string|max:1',
             'first_name'      => 'nullable|required_without:company_name|string|max:100',
             'last_name'       => 'nullable|required_without:company_name|string|max:100',

@@ -109,7 +109,6 @@ class SalesPosController extends Controller
             'items.*.id' => ['required', 'exists:products,id'],
             'items.*.qty' => ['required', 'integer', 'min:1'],
             'items.*.discount_p' => ['nullable', 'numeric', 'min:0', 'max:100'],
-            // 👇 Ya no exigimos min:1 aquí: CREDITO puede llegar sin abono (payments = [])
             'payments' => ['nullable', 'array'],
             'payments.*.method' => ['required_with:payments', 'in:EFECTIVO,TRANSFERENCIA,TARJETA_DEBITO,TARJETA_CREDITO'],
             'payments.*.amount' => ['required_with:payments', 'numeric', 'min:0'],
@@ -117,10 +116,23 @@ class SalesPosController extends Controller
             'payments.*.reference' => ['nullable', 'string', 'max:100'],
         ]);
 
-        return DB::transaction(function () use ($request, $validated) {
+        // 👇 NUEVO: las ventas a Crédito/Separe no pueden quedar a nombre del cliente genérico
+        if (in_array($validated['sale_type'], ['CREDITO', 'SEPARE'])) {
+            $customer = Contact::find($validated['customer_id']);
+            if (!$customer || $customer->document_number === '222222222222') {
+                return response()->json([
+                    'message' => 'Las ventas a Crédito o Plan Separe requieren un cliente registrado (no el consumidor final genérico).'
+                ], 422);
+            }
+        }
 
+        // 👇 CAMBIADO: de DB::transaction(closure) a transacción manual, para poder
+        //    hacer rollBack() explícito antes de cada salida por error y no "quemar"
+        //    el consecutivo DIAN cuando la venta no se completa.
+        DB::beginTransaction();
+
+        try {
             // A. Validar y bloquear la resolución DIAN para evitar colisiones de numeración
-            // 👇 Se replican los MISMOS filtros que index() (antes solo filtraba is_active)
             $resolution = DianResolution::where('is_active', true)
                 ->where('current_number', '<', DB::raw('to_number'))
                 ->where('date_to', '>=', now()->toDateString())
@@ -128,8 +140,8 @@ class SalesPosController extends Controller
                 ->lockForUpdate()
                 ->first();
 
-            // 👇 Antes usaba redirect()->back(), rompía el axios.post() del frontend (esperaba JSON)
             if (!$resolution) {
+                DB::rollBack();
                 return response()->json([
                     'message' => 'No hay una resolución DIAN activa o se han agotado los consecutivos.'
                 ], 422);
@@ -151,18 +163,19 @@ class SalesPosController extends Controller
             foreach ($request->items as $item) {
                 $product = Product::findOrFail($item['id']);
                 $qty = $item['qty'];
-                // 👇 null-safe: antes explotaba si discount_p venía null
                 $discPercent = $item['discount_p'] ?? 0;
 
-                // 👇 Chequeo de stock antes de comprometer la venta (antes no existía)
+                // 👇 CAMBIADO: rollBack() antes de responder, para no dejar el
+                //    consecutivo DIAN incrementado sin una venta real detrás.
                 if ($product->manage_stock && $product->stock < $qty) {
+                    DB::rollBack();
                     return response()->json([
                         'message' => "Stock insuficiente para el producto '{$product->name}'. Disponible: {$product->stock}."
                     ], 422);
                 }
 
                 // Cálculos Financieros bajo esquema de la migración
-                $price = $product->price_excluding_tax; // Base gravable
+                $price = $product->price_excluding_tax;
                 $subtotalItemRaw = $price * $qty;
 
                 $discAmount = $subtotalItemRaw * ($discPercent / 100);
@@ -171,7 +184,6 @@ class SalesPosController extends Controller
                 $taxAmount = $subtotalConDescuento * ($product->tax_rate / 100);
                 $subtotalFinalItem = $subtotalConDescuento + $taxAmount;
 
-                // Acumuladores globales
                 $subtotalGlobal += $subtotalItemRaw;
                 $discountGlobal += $discAmount;
                 $taxGlobal += $taxAmount;
@@ -191,29 +203,27 @@ class SalesPosController extends Controller
 
             $totalGlobal = ($subtotalGlobal - $discountGlobal) + $taxGlobal;
 
-            // C. Reglas de negocio por tipo de venta — SIEMPRE calculadas en servidor,
-            //    nunca confiando en lo que el cliente diga que pagó.
+            // C. Reglas de negocio por tipo de venta — SIEMPRE calculadas en servidor
             $paidAmount = collect($request->payments ?? [])->sum('amount');
 
+            // 👇 CAMBIADO: rollBack() antes de responder
             if ($request->sale_type === 'CONTADO' && round($paidAmount, 2) < round($totalGlobal, 2)) {
+                DB::rollBack();
                 return response()->json([
                     'message' => 'Una venta de Contado requiere el pago completo del total.'
                 ], 422);
             }
 
+            // 👇 CAMBIADO: rollBack() antes de responder
             if ($request->sale_type === 'SEPARE' && $paidAmount <= 0) {
+                DB::rollBack();
                 return response()->json([
                     'message' => 'El Plan Separe requiere un abono inicial mayor a $0.'
                 ], 422);
             }
 
-            // CREDITO no exige mínimo: puede llegar con $0 de abono.
-
-            $paymentStatus = match (true) {
-                $paidAmount >= $totalGlobal => 'PAGADA',       // Se pagó todo, sea CONTADO, CREDITO o SEPARE
-                $request->sale_type === 'SEPARE' => 'SEPARE',  // Separe con saldo pendiente
-                default => 'PENDIENTE',                        // Crédito con saldo pendiente
-            };
+            // 👇 QUITADO: el primer $paymentStatus = match(true) {...} era código muerto
+            //    (se sobreescribía de inmediato con el siguiente match). Se dejó un solo bloque.
             $paymentStatus = match ($request->sale_type) {
                 'CONTADO' => 'PAGADA',
                 'SEPARE'  => 'SEPARE',
@@ -230,8 +240,8 @@ class SalesPosController extends Controller
                 'discount_total'     => $discountGlobal,
                 'tax_total'          => $taxGlobal,
                 'total'              => $totalGlobal,
-                'sale_type'          => $request->sale_type,   // 👈 nuevo campo
-                'payment_status'     => $paymentStatus,        // 👈 ya no está hardcodeado
+                'sale_type'          => $request->sale_type,
+                'payment_status'     => $paymentStatus,
             ]);
 
             // E. Guardar detalles de venta y afectar inventario/Kardex
@@ -250,12 +260,10 @@ class SalesPosController extends Controller
 
                 $product = $pItem['product_model'];
 
-                // Descontar Stock si el producto lo requiere
                 if ($product->manage_stock) {
                     $product->decrement('stock', $pItem['quantity']);
                     $newStock = $product->stock;
 
-                    // 📊 Registrar movimiento en el Kardex (Polimórfico con sales)
                     KardexMovement::create([
                         'product_id'         => $product->id,
                         'movable_type'       => Sale::class,
@@ -274,8 +282,6 @@ class SalesPosController extends Controller
 
             // F. Guardar Métodos de Pago Mixtos (SalePayments) — solo si vienen
             foreach ($request->payments ?? [] as $payment) {
-                // 👇 El "vuelto" solo tiene sentido en EFECTIVO; en tarjeta/transferencia
-                //    el campo "abono/recibido" no representa efectivo entregado físicamente.
                 $isCash = $payment['method'] === 'EFECTIVO';
                 $received = $isCash ? ($payment['received_amount'] ?? $payment['amount']) : $payment['amount'];
                 $change = $isCash ? max(0, $received - $payment['amount']) : 0;
@@ -304,13 +310,25 @@ class SalesPosController extends Controller
                 ]);
             }
 
+            // 👇 NUEVO: commit explícito antes de responder con éxito
+            DB::commit();
+
             return response()->json([
                 'success' => true,
                 'message' => "Factura {$invoiceNumber} procesada correctamente.",
                 'invoice_number' => $invoiceNumber,
                 'sale_id' => $sale->id
             ]);
-        });
+
+        } catch (\Exception $e) {
+            // 👇 NUEVO: red de seguridad para cualquier error inesperado no contemplado arriba
+            //    (ej. fallo de base de datos a mitad de camino)
+            DB::rollBack();
+            Log::error('Error al procesar venta POS: ' . $e->getMessage());
+            return response()->json([
+                'message' => 'No se pudo procesar la venta. Intenta de nuevo.'
+            ], 500);
+        }
     }
 
     public function searchCustomers($tenant, Request $request)

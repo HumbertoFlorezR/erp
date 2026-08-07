@@ -156,8 +156,8 @@ const statusBadgeClass = (status) => {
                     <table class="w-full text-left border-collapse">
                         <thead>
                             <tr class="bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                                <th class="px-6 py-4">Fecha Emisión</th>
                                 <th class="px-6 py-4">Número Factura</th>
+                                <th class="px-6 py-4">Fecha Emisión</th>
                                 <th class="px-6 py-4">Proveedor</th>
                                 <th class="px-6 py-4">Vencimiento</th>
                                 <th class="px-6 py-4 text-center">Estado</th>
@@ -180,8 +180,8 @@ const statusBadgeClass = (status) => {
                                         {{ invoice.invoice_number }}
                                     </Link>
                                 </td>
-                                <td class="px-6 py-2 whitespace-nowrap font-mono font-bold" :style="{ color: tenant.primary_color }">
-                                    {{ invoice.invoice_number }}
+                                <td class="px-6 py-2 whitespace-nowrap text-slate-500">
+                                    {{ new Date(invoice.issue_date).toLocaleDateString('es-CO', { timeZone: 'UTC' }) }}
                                 </td>
                                 <td class="px-6 py-2 font-semibold text-slate-800">
                                     {{ invoice.provider ? (invoice.provider.company_name && invoice.provider.company_name.trim() ? invoice.provider.company_name : `${invoice.provider.first_name || ''} ${invoice.provider.last_name || ''}`.trim()) : 'N/A' }}

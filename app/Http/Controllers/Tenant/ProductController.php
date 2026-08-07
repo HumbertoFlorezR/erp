@@ -82,10 +82,12 @@ class ProductController extends Controller
             'code'                => 'nullable|string|max:50',
             'barcode'             => 'nullable|string|max:50|unique:products,barcode', // 👈 Validado
             'name'                => 'required|string|max:150',
+            'description'         => 'nullable|string',                 // 👈 agregar
             'price_excluding_tax' => 'required|numeric|min:0',
             'tax_rate'            => 'required|numeric|min:0|max:100',
             'tax_type'            => 'required|in:GRAVADO,EXENTO,EXCLUIDO',
             'discount_rate'       => 'nullable|numeric|min:0|max:100',                 // 👈 Validado
+            'minimum_stock'       => 'nullable|numeric|min:0',           // 👈 agregar
             'manage_stock'        => 'boolean',
             'is_perishable'       => 'boolean',
             'unit_measure_code'   => 'required|string|max:5',
@@ -98,7 +100,7 @@ class ProductController extends Controller
             $validated['unit_measure_code'] = 'WSD';
         }
 
-        Product::create([
+        $product = Product::create([
             'type'                 => $validated['type'] ?? 'PRODUCTO',
             'name'                 => $validated['name'],
             'code'                 => $validated['code'] ?? 'GEN-' . time(),
@@ -111,7 +113,23 @@ class ProductController extends Controller
             'stock'                => 0,
             'manage_stock'         => $validated['manage_stock'] ?? true,
             'unit_measure_code'    => $validated['unit_measure_code'] ?? '94',
+            'description'          => $validated['description'] ?? null,
+            'minimum_stock'        => $validated['minimum_stock'] ?? 0,
         ]);
+
+        if ($request->wantsJson() || $request->ajax()) {
+            return response()->json([
+                'success' => true,
+                'product' => [
+                    'id'                  => $product->id,
+                    'name'                => $product->name,
+                    'code'                => $product->code,
+                    'price_excluding_tax' => $product->price_excluding_tax,
+                    'manage_stock'        => $product->manage_stock,
+                    'stock'               => $product->stock,
+                ]
+            ]);
+        }
 
         return redirect()->back()->with('success', 'Ítem creado correctamente.');
     }
@@ -170,39 +188,38 @@ class ProductController extends Controller
     public function storeQuick(Request $request)
     {
         $validated = $request->validate([
-            'name' => 'required|string|max:255',
-            'code' => 'nullable|string|unique:products,code', // Usamos columna real 'code'
-            'controlar_inventario' => 'required|boolean',
-            'price_cost' => 'nullable|numeric|min:0',
+            'name'           => 'required|string|max:255',
+            'code'           => 'nullable|string|unique:products,code',
+            'manage_stock'   => 'required|boolean',
+            'price_excluding_tax' => 'nullable|numeric|min:0',
         ]);
 
-        // Creamos el producto con valores mínimos por defecto
         $product = Product::create([
-            'name' => $validated['name'],
-            'code' => $validated['code'] ?? 'GEN-' . time(),
-            'price_cost' => $request->input('price_excluding_tax', 0) ?? ($validated['price_cost'] ?? 0.00), // Mapeo seguro de ambos formularios
-            'price_sale' => ($validated['price_cost'] ?? 0.00) * 1.30,
-            'stock' => 0,
-            'controlar_inventario' => $validated['controlar_inventario'],
+            'name'                => $validated['name'],
+            'code'                => $validated['code'] ?? 'GEN-' . time() . rand(10, 99),
+            'price_excluding_tax' => $validated['price_excluding_tax'] ?? 0,
+            'average_cost'        => $validated['price_excluding_tax'] ?? 0,
+            'stock'               => 0,
+            'manage_stock'        => $validated['manage_stock'],
+            'tax_rate'            => 19,
+            'tax_type'            => 'GRAVADO',
+            'unit_measure_code'   => '94',
         ]);
 
-        // 🌟 EL TRUCO MAGICO: Detectamos el origen de la petición
         if ($request->wantsJson() || $request->ajax()) {
-            // Si viene de la modal de Compras (Axios), le mandamos el JSON que Vue necesita
             return response()->json([
                 'success' => true,
                 'product' => [
-                    'id'   => $product->id,
-                    'name' => $product->name,
-                    'code' => $product->code,
-                    'price_cost' => $product->price_cost,
-                    'stock' => 0,
-                    'controlar_inventario' => $product->controlar_inventario
+                    'id'                  => $product->id,
+                    'name'                => $product->name,
+                    'code'                => $product->code,
+                    'price_excluding_tax' => $product->price_excluding_tax,
+                    'stock'               => 0,
+                    'manage_stock'        => $product->manage_stock,
                 ]
             ]);
         }
 
-        // Si viene del formulario tradicional de Productos (Inertia), redirigimos normalmente
         return redirect()->back()->with('success', 'Producto express creado correctamente.');
     }
 }

@@ -48,5 +48,15 @@ class PurchaseInvoice extends Model
     public function items(): HasMany
     {
         return $this->hasMany(PurchaseInvoiceItem::class);
+
+        }
+    public function payments()
+    {
+        return $this->hasMany(PurchasePayment::class);
+    }
+
+    public function accountPayable()
+    {
+        return $this->hasOne(AccountPayable::class);
     }
 }

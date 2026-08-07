@@ -3,6 +3,7 @@
 use App\Http\Controllers\Tenant\ExpenseController;
 use App\Http\Controllers\Admin\EmpresaController;
 use App\Http\Controllers\AiQueryController;
+use App\Http\Controllers\Tenant\AccountPayableController;
 use App\Http\Controllers\Tenant\AccountReceivableController;
 use App\Http\Controllers\Tenant\ContactController;
 use App\Http\Controllers\Tenant\DashboardController;
@@ -85,6 +86,11 @@ Route::group([
         Route::get('/accounts-receivable/{accountId}', [AccountReceivableController::class, 'show'])->name('accounts-receivable.show');
         Route::post('/accounts-receivable/{accountId}/payment', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.payment');
         Route::post('/accounts-receivable/{accountId}/payments', [AccountReceivableController::class, 'applyPayment'])->name('accounts-receivable.apply-payment');
+
+        // Rutas para la gestión de cuentas por pagar
+        Route::get('/accounts-payable', [AccountPayableController::class, 'index'])->name('accounts-payable.index');
+        Route::get('/accounts-payable/{accountId}', [AccountPayableController::class, 'show'])->name('accounts-payable.show');
+        Route::post('/accounts-payable/{accountId}/payments', [AccountPayableController::class, 'applyPayment'])->name('accounts-payable.apply-payment');
 
         // Módulo de Gastos
         Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
