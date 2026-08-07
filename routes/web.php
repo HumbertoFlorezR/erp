@@ -93,12 +93,39 @@ Route::group([
         Route::post('/accounts-payable/{accountId}/payments', [AccountPayableController::class, 'applyPayment'])->name('accounts-payable.apply-payment');
 
         // Módulo de Gastos
+        Route::middleware(['permission:gastos.ver'])->group(function () {
+            Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
+            Route::middleware(['permission:gastos.crear'])->group(function () {
+                Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
+                Route::post('/expenses/categories', [ExpenseController::class, 'storeQuickCategory'])->name('expenses.categories.store');
+            });
+            Route::middleware(['permission:gastos.editar'])->group(function () {
+                Route::put('/expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');
+            });
+            Route::middleware(['permission:gastos.anular'])->group(function () {
+                Route::post('/expenses/{id}/cancel', [ExpenseController::class, 'cancel'])->name('expenses.cancel');
+            });
+        });
+        /*
         Route::get('/expenses', [ExpenseController::class, 'index'])->name('expenses.index');
         Route::post('/expenses', [ExpenseController::class, 'store'])->name('expenses.store');
         Route::put('/expenses/{id}', [ExpenseController::class, 'update'])->name('expenses.update');
         Route::post('/expenses/{id}/cancel', [ExpenseController::class, 'cancel'])->name('expenses.cancel');
         Route::post('/expenses/categories', [ExpenseController::class, 'storeQuickCategory'])->name('expenses.categories.store');
 
+        /*
+        // Módulo de Gastos — todo requiere al menos poder verlo
+
+
+// Ventas POS
+Route::middleware(['permission:pos.vender'])->group(function () {
+    Route::get('/sales/pos', [SalesPosController::class, 'index'])->name('sales.pos.index');
+    Route::post('/sales/pos', [SalesPosController::class, 'store'])->name('sales.pos.store');
+    Route::post('/sales/pos/customer', [SalesPosController::class, 'storeCustomer'])->name('sales.pos.customer');
+    Route::get('/sales/pos/search-customers', [SalesPosController::class, 'searchCustomers'])->name('sales.pos.search-customers');
+    Route::get('/sales/pos/search-products', [SalesPosController::class, 'searchProducts'])->name('sales.pos.search-products');
+});
+        */
         // Ruta de prueba para verificar que el POST funciona
         Route::post('/test-payment/{id}', function ($id) {
             return response()->json(['success' => true, 'id' => $id]);
